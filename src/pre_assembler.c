@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 /**
  * @file pre_assembler.c
  * @brief Implementation of the macro processor
@@ -20,35 +19,42 @@ macro_table_t* create_macro_table() {
 }
 
 /* Add a new macro to the table */
-bool add_macro(macro_table_t *table, const char *name) {
+bool add_macro(macro_table_t *table, const char *name, error_context_t *context) {
     macro_t *macro;
 
     /* Check if the table is valid */
     if (!table) {
+        report_context_error(context, "Invalid macro table");
         return false;
     }
 
     /* Check if the name is valid (not a reserved word) */
     if (is_reserved_word(name)) {
+        report_context_error(context, "Macro name '%s' is a reserved word", name);
         return false;
     }
 
     /* Check if a macro with this name already exists */
     if (find_macro(table, name)) {
+        report_context_error(context, "Macro '%s' already defined", name);
         return false;
     }
 
     /* Create a new macro */
     macro = (macro_t *)malloc(sizeof(macro_t));
     if (!macro) {
+        report_context_error(context, "Memory allocation error");
         return false;
     }
 
     /* Initialize the macro */
-    strcpy(macro->name, name);
+    strncpy(macro->name, name, MAX_LABEL_LENGTH - 1);
+    macro->name[MAX_LABEL_LENGTH - 1] = '\0';
+
     macro->lines = (char **)malloc(MAX_MACRO_LINES * sizeof(char *));
     if (!macro->lines) {
         free(macro);
+        report_context_error(context, "Memory allocation error");
         return false;
     }
     macro->line_count = 0;
@@ -61,11 +67,12 @@ bool add_macro(macro_table_t *table, const char *name) {
 }
 
 /* Add a line to the current macro being defined */
-bool add_line_to_macro(macro_table_t *table, const char *line) {
+bool add_line_to_macro(macro_table_t *table, const char *line, error_context_t *context) {
     macro_t *macro;
 
     /* Check if the table is valid */
     if (!table || !table->head) {
+        report_context_error(context, "Invalid macro table or no current macro");
         return false;
     }
 
@@ -74,12 +81,14 @@ bool add_line_to_macro(macro_table_t *table, const char *line) {
 
     /* Check if we can add more lines */
     if (macro->line_count >= MAX_MACRO_LINES) {
+        report_context_error(context, "Macro '%s' has too many lines", macro->name);
         return false;
     }
 
     /* Add the line */
     macro->lines[macro->line_count] = str_duplicate(line);
     if (!macro->lines[macro->line_count]) {
+        report_context_error(context, "Memory allocation error");
         return false;
     }
     macro->line_count++;
@@ -137,8 +146,38 @@ void free_macro_table(macro_table_t *table) {
     free(table);
 }
 
+/* Safe implementation of strtok_r for C90 compatibility */
+static char *safe_strtok_r(char *str, const char *delim, char **saveptr) {
+    char *token;
+
+    if (str == NULL) {
+        str = *saveptr;
+    }
+
+    /* Skip leading delimiters */
+    str += strspn(str, delim);
+    if (*str == '\0') {
+        *saveptr = str;
+        return NULL;
+    }
+
+    /* Find the end of the token */
+    token = str;
+    str = strpbrk(str, delim);
+    if (str == NULL) {
+        /* This token finishes the string */
+        *saveptr = strchr(token, '\0');
+    } else {
+        /* Terminate the token and make saveptr point to the rest of the string */
+        *str = '\0';
+        *saveptr = str + 1;
+    }
+
+    return token;
+}
+
 /* Process a source file to expand macros */
-bool process_file(const char *filename) {
+bool process_file(const char *filename, error_context_t *context) {
     FILE *source, *output;
     char base_filename[MAX_FILENAME_LENGTH];
     char source_filename[MAX_FILENAME_LENGTH];
@@ -151,6 +190,12 @@ bool process_file(const char *filename) {
     int line_number = 0;
     char *token, *saveptr;
 
+    /* Initialize error context */
+    if (context) {
+        strncpy(context->filename, filename, MAX_FILENAME_LENGTH - 1);
+        context->filename[MAX_FILENAME_LENGTH - 1] = '\0';
+    }
+
     /* Get the base filename */
     get_base_filename(filename, base_filename);
 
@@ -161,7 +206,7 @@ bool process_file(const char *filename) {
     /* Open the source file */
     source = fopen(source_filename, "r");
     if (!source) {
-        report_error(filename, 0, "Could not open source file: %s", source_filename);
+        report_context_error(context, "Could not open source file: %s", source_filename);
         return false;
     }
 
@@ -169,7 +214,7 @@ bool process_file(const char *filename) {
     output = fopen(output_filename, "w");
     if (!output) {
         fclose(source);
-        report_error(filename, 0, "Could not open output file: %s", output_filename);
+        report_context_error(context, "Could not open output file: %s", output_filename);
         return false;
     }
 
@@ -178,7 +223,7 @@ bool process_file(const char *filename) {
     if (!macro_table) {
         fclose(source);
         fclose(output);
-        report_error(filename, 0, "Could not create macro table");
+        report_context_error(context, "Could not create macro table");
         return false;
     }
 
@@ -188,6 +233,9 @@ bool process_file(const char *filename) {
         bool write_line = true;
 
         line_number++;
+        if (context) {
+            context->line_number = line_number;
+        }
 
         /* Remove newline character */
         if (line[strlen(line) - 1] == '\n') {
@@ -195,7 +243,8 @@ bool process_file(const char *filename) {
         }
 
         /* Make a copy of the line for processing */
-        strcpy(processed_line, line);
+        strncpy(processed_line, line, MAX_LINE_LENGTH - 1);
+        processed_line[MAX_LINE_LENGTH - 1] = '\0';
 
         /* Skip comments */
         if (processed_line[0] == ';') {
@@ -213,54 +262,54 @@ bool process_file(const char *filename) {
         }
 
         /* Tokenize the line */
-        token = strtok_r(processed_line, " \t", &saveptr);
+        token = safe_strtok_r(processed_line, " \t", &saveptr);
 
         /* Check for macro definition start */
         if (token && strcmp(token, "mcro") == 0) {
             if (macro_nesting_level >= MAX_MACRO_NESTING) {
-                report_error(filename, line_number, "Macro nesting level exceeded");
+                report_context_error(context, "Macro nesting level exceeded");
                 success = false;
                 continue;
             }
 
             /* Get the macro name */
-            token = strtok_r(NULL, " \t", &saveptr);
+            token = safe_strtok_r(NULL, " \t", &saveptr);
             if (!token) {
-                report_error(filename, line_number, "Missing macro name");
+                report_context_error(context, "Missing macro name");
                 success = false;
                 continue;
             }
 
             /* Check for extra tokens */
-            if (strtok_r(NULL, " \t", &saveptr)) {
-                report_error(filename, line_number, "Extra tokens after macro name");
+            if (safe_strtok_r(NULL, " \t", &saveptr)) {
+                report_context_error(context, "Extra tokens after macro name");
                 success = false;
                 continue;
             }
 
             /* Add the macro to the table */
-            if (!add_macro(macro_table, token)) {
-                report_error(filename, line_number, "Invalid macro name or duplicate macro: %s", token);
+            if (!add_macro(macro_table, token, context)) {
                 success = false;
                 continue;
             }
 
             /* Remember the macro name and increase nesting level */
-            strcpy(macro_name_stack[macro_nesting_level], token);
+            strncpy(macro_name_stack[macro_nesting_level], token, MAX_LABEL_LENGTH - 1);
+            macro_name_stack[macro_nesting_level][MAX_LABEL_LENGTH - 1] = '\0';
             macro_nesting_level++;
             write_line = false;
         }
         /* Check for macro definition end */
         else if (token && strcmp(token, "endmcro") == 0) {
             if (macro_nesting_level == 0) {
-                report_error(filename, line_number, "endmcro without matching mcro");
+                report_context_error(context, "endmcro without matching mcro");
                 success = false;
                 continue;
             }
 
             /* Check for extra tokens */
-            if (strtok_r(NULL, " \t", &saveptr)) {
-                report_error(filename, line_number, "Extra tokens after endmcro");
+            if (safe_strtok_r(NULL, " \t", &saveptr)) {
+                report_context_error(context, "Extra tokens after endmcro");
                 success = false;
                 continue;
             }
@@ -276,7 +325,7 @@ bool process_file(const char *filename) {
             /* Check if this is a label followed by a macro */
             if (!macro && token[strlen(token) - 1] == ':') {
                 /* This might be a label, check if next token is a macro */
-                char *next_token = strtok_r(NULL, " \t", &saveptr);
+                char *next_token = safe_strtok_r(NULL, " \t", &saveptr);
                 if (next_token) {
                     macro = find_macro(macro_table, next_token);
                     if (macro) {
@@ -309,8 +358,7 @@ bool process_file(const char *filename) {
         /* Inside a macro definition */
         else if (macro_nesting_level > 0) {
             /* Add the line to the current macro */
-            if (!add_line_to_macro(macro_table, line)) {
-                report_error(filename, line_number, "Could not add line to macro");
+            if (!add_line_to_macro(macro_table, line, context)) {
                 success = false;
                 continue;
             }
@@ -326,7 +374,7 @@ bool process_file(const char *filename) {
 
     /* Check if we ended with an open macro definition */
     if (macro_nesting_level > 0) {
-        report_error(filename, line_number, "Macro definition not closed");
+        report_context_error(context, "Macro definition not closed");
         success = false;
     }
 

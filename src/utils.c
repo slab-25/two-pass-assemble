@@ -12,21 +12,7 @@ static const char *reserved_words[] = {
     ".data", ".string", ".entry", ".extern", "mcro", "endmcro", NULL
 };
 
-void report_error(const char *filename, int line_number, const char *format, ...) {
-    va_list args;
-    fprintf(stderr, "Error in %s, line %d: ", filename, line_number);
-
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-
-    fprintf(stderr, "\n");
-}
-
-/*
- * Verify the trim function in utils.c
- * It should look something like this:
- */
+/* Trim whitespace from beginning and end of string */
 char* trim(char *str) {
     char *end;
 
@@ -58,6 +44,7 @@ char* trim(char *str) {
     return str;
 }
 
+/* Check if string is a valid label name */
 bool is_valid_label(const char *label) {
     int i, len;
 
@@ -92,6 +79,7 @@ bool is_valid_label(const char *label) {
     return true;
 }
 
+/* Check if string is a register name */
 bool is_register(const char *str) {
     /* Check if the string is in the format 'r[0-7]' */
     if (str && str[0] == 'r' && strlen(str) == 2 &&
@@ -101,6 +89,7 @@ bool is_register(const char *str) {
     return false;
 }
 
+/* Get register number from register name */
 int get_register_number(const char *reg_str) {
     /* If it's a valid register, return its number */
     if (is_register(reg_str)) {
@@ -109,6 +98,7 @@ int get_register_number(const char *reg_str) {
     return -1;
 }
 
+/* Check if string is a valid integer */
 bool is_integer(const char *str) {
     char *endptr;
 
@@ -139,10 +129,12 @@ bool is_integer(const char *str) {
     return *endptr == '\0';
 }
 
+/* Convert string to integer */
 int string_to_int(const char *str) {
     return (int)strtol(str, NULL, 10);
 }
 
+/* Duplicate a string */
 char* str_duplicate(const char *str) {
     char *result;
 
@@ -157,6 +149,7 @@ char* str_duplicate(const char *str) {
     return result;
 }
 
+/* Check if string is a reserved word */
 bool is_reserved_word(const char *str) {
     int i;
 
@@ -173,6 +166,7 @@ bool is_reserved_word(const char *str) {
     return false;
 }
 
+/* Get base filename without extension */
 void get_base_filename(const char *filename, char *base) {
     const char *ext;
     size_t len;
@@ -194,10 +188,17 @@ void get_base_filename(const char *filename, char *base) {
     base[len] = '\0';
 }
 
+/* Create filename with extension */
 void create_filename(const char *base, const char *extension, char *result) {
     if (!base || !extension || !result) {
         return;
     }
 
     sprintf(result, "%s%s", base, extension);
+}
+
+/* Display version information */
+void print_version() {
+    printf("Two-Pass Assembler v%s\n", ASSEMBLER_VERSION);
+    printf("C90 compliant implementation\n");
 }
