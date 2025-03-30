@@ -1,1 +1,1 @@
-# Updated Makefile with core components
+# Updated Makefile with pre-assembler components
