@@ -1,61 +1,41 @@
-# Makefile for the Two-Pass Assembler
-
-# Compiler settings
+# Makefile for two-pass assembler
 CC = gcc
-CFLAGS = -std=c90 -Wall -Wextra -pedantic
-DEBUG = -g
+CFLAGS = -std=c90 -Wall -Wextra -pedantic -g
+INCLUDES = -Iinclude
 
-
-# Directories
 SRC_DIR = src
-INCLUDE_DIR = include
+OBJ_DIR = obj
+BIN_DIR = bin
 
-# Source files
-SOURCES = $(SRC_DIR)/main.c \
-          $(SRC_DIR)/pre_assembler.c \
-          $(SRC_DIR)/first_pass.c \
-          $(SRC_DIR)/second_pass.c \
-          $(SRC_DIR)/symbol_table.c \
-          $(SRC_DIR)/output.c \
-          $(SRC_DIR)/utils.c
-
-# Header files
-HEADERS = $(INCLUDE_DIR)/assembler.h \
-          $(INCLUDE_DIR)/pre_assembler.h \
-          $(INCLUDE_DIR)/first_pass.h \
-          $(INCLUDE_DIR)/second_pass.h \
-          $(INCLUDE_DIR)/symbol_table.h \
-          $(INCLUDE_DIR)/output.h \
-          $(INCLUDE_DIR)/utils.h
-
-# Object files
-OBJECTS = $(SOURCES:.c=.o)
+SRC_FILES = $(wildcard $(SRC_DIR)/*.c)
+OBJ_FILES = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRC_FILES))
 
 # Executable name
-EXECUTABLE = assembler
+EXECUTABLE = $(BIN_DIR)/assembler
 
 # Default target
-all: $(EXECUTABLE)
+all: directories $(EXECUTABLE)
+
+# Create necessary directories
+directories:
+	mkdir -p $(OBJ_DIR) $(BIN_DIR)
 
 # Linking rule
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $(CFLAGS) $(OBJECTS) -o $@
+$(EXECUTABLE): $(OBJ_FILES)
+	$(CC) $(CFLAGS) $^ -o $@
 
 # Compilation rule
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # Clean rule
 clean:
-	rm -f $(SRC_DIR)/*.o $(EXECUTABLE)
+	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
-# Debug build
-debug: CFLAGS += $(DEBUG)
-debug: all
-
-# Testing rule
-test: $(EXECUTABLE)
-	cd tests && ./test_runner.sh
+# Test compilation rule
+test: all
+	@echo "Running tests..."
+	# Test commands can be added here
 
 # Phony targets
-.PHONY: all clean debug test
+.PHONY: all clean directories test

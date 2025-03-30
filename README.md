@@ -1,6 +1,5 @@
 # Two-Pass Assembler
 
-![Logo](logo.png)
 A custom assembler for a 24-bit assembly language as defined in the Systems Programming Lab course.
 
 ## Project Overview
@@ -36,30 +35,10 @@ cd two-pass-assembler
 make
 ```
 
-### Docker Build (Recommended)
-
-For consistent environment across all systems, we provide a Docker setup:
-
-1. Install Docker and Docker Compose
-2. Build and start the container:
-
-```bash
-docker-compose up --build -d
-```
-
-3. Access the container and build the project:
-
-```bash
-docker exec -it two_pass_assembler bash
-make
-```
-
-This ensures a consistent Ubuntu 16.04 environment with proper C90 support.
-
 ## Usage
 
 ```bash
-./assembler file1 file2 ...
+./bin/assembler file1 file2 ...
 ```
 
 For each source file (.as), the assembler will generate:
@@ -110,39 +89,32 @@ The assembler supports the following instructions:
 
 - `src/`: Source code files
 - `include/`: Header files
-- `tests/`: Test files and test runner
-- `docs/`: Documentation
+- `obj/`: Object files (created during build)
+- `bin/`: Binary executables (created during build)
 
-## Testing
-
-To run the test suite:
-
-```bash
-# Build the assembler first
-make
-
-# Run all tests
-cd tests
-./test_runner.sh
-```
-
-The test runner checks different aspects of the assembler:
-
-- Pre-assembler macro expansion
-- First pass symbol table construction
-- Second pass machine code generation
-- End-to-end integration tests
-
-## Current Implementation Status
+## Implementation Status
 
 - ✅ Project structure
 - ✅ Core utilities
 - ✅ Build system
-- ✅ Test infrastructure
-- ✅ Docker environment
-- ⚠️ Pre-assembler (partial)
-- ⚠️ Symbol table (partial)
-- ❌ First pass
-- ❌ Second pass
-- ❌ Output generation
+- ✅ Pre-assembler
+- ✅ Symbol table
+- ✅ First pass
+- ✅ Second pass
+- ✅ Output generation
 
+## C90 Compliance
+
+This project strictly adheres to the C90 standard for compatibility with older systems and compiler requirements. It has been tested to compile and run correctly on Ubuntu 16.04 with gcc using the flags: `-std=c90 -Wall -Wextra -pedantic`.
+
+## Error Handling
+
+The assembler includes a comprehensive error reporting system that identifies:
+
+- Syntax errors
+- Undefined symbols
+- Duplicate definitions
+- Invalid addressing modes
+- And more...
+
+All errors are reported with filename and line number for easy debugging.

@@ -1,6 +1,6 @@
 /**
  * @file symbol_table.c
- * @brief Implementation of the symbol table management
+ * @brief Implementation of the symbol table management with simplified attribute support
  */
 
 #include "../include/symbol_table.h"
@@ -16,7 +16,7 @@ symbol_table_t* create_symbol_table() {
 }
 
 /* Add a symbol to the table */
-bool add_symbol(symbol_table_t *table, const char *name, int value, symbol_type_t type) {
+bool add_symbol(symbol_table_t *table, const char *name, int value, symbol_attr_t attributes) {
     symbol_t *symbol;
 
     /* Check if the table is valid */
@@ -38,7 +38,7 @@ bool add_symbol(symbol_table_t *table, const char *name, int value, symbol_type_
     /* Initialize the symbol */
     strcpy(symbol->name, name);
     symbol->value = value;
-    symbol->type = type;
+    symbol->attributes = attributes;
 
     /* Add the symbol to the table */
     symbol->next = table->head;
@@ -84,8 +84,8 @@ bool update_symbol_value(symbol_table_t *table, const char *name, int value) {
     return true;
 }
 
-/* Add an attribute to a symbol */
-bool add_symbol_attribute(symbol_table_t *table, const char *name, symbol_type_t attr) {
+/* Add attributes to a symbol */
+bool add_symbol_attributes(symbol_table_t *table, const char *name, symbol_attr_t attributes) {
     symbol_t *symbol;
 
     /* Find the symbol */
@@ -94,16 +94,57 @@ bool add_symbol_attribute(symbol_table_t *table, const char *name, symbol_type_t
         return false;
     }
 
-    /* Add the attribute */
-    if (attr == SYMBOL_ENTRY) {
-        /* Only add ENTRY attribute if the symbol is internal (not EXTERNAL) */
-        if (symbol->type == SYMBOL_EXTERNAL) {
-            return false;
-        }
-        symbol->type = SYMBOL_ENTRY;
+    /* Check for conflicting attributes */
+    if ((attributes & SYMBOL_ATTR_ENTRY) && (symbol->attributes & SYMBOL_ATTR_EXTERNAL)) {
+        return false; /* Cannot be both ENTRY and EXTERNAL */
     }
 
+    /* Add the attributes */
+    symbol->attributes |= attributes;
+
     return true;
+}
+
+/* Check if a symbol has a specific attribute */
+bool symbol_has_attribute(const symbol_t *symbol, symbol_attr_t attribute) {
+    if (!symbol) {
+        return false;
+    }
+    return (symbol->attributes & attribute) != 0;
+}
+
+/* Get a string representation of symbol attributes */
+void symbol_get_attr_string(const symbol_t *symbol, char *buffer, size_t size) {
+    if (!symbol || !buffer || size == 0) {
+        return;
+    }
+
+    buffer[0] = '\0';
+
+    if (symbol->attributes & SYMBOL_ATTR_CODE) {
+        strncat(buffer, "CODE ", size - strlen(buffer) - 1);
+    }
+    if (symbol->attributes & SYMBOL_ATTR_DATA) {
+        strncat(buffer, "DATA ", size - strlen(buffer) - 1);
+    }
+    if (symbol->attributes & SYMBOL_ATTR_EXTERNAL) {
+        strncat(buffer, "EXTERNAL ", size - strlen(buffer) - 1);
+    }
+    if (symbol->attributes & SYMBOL_ATTR_ENTRY) {
+        strncat(buffer, "ENTRY ", size - strlen(buffer) - 1);
+    }
+
+    /* Remove trailing space if there is one */
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len-1] == ' ') {
+        buffer[len-1] = '\0';
+    }
+
+    /* If no attributes were set */
+    if (buffer[0] == '\0') {
+        strncpy(buffer, "NONE", size - 1);
+        buffer[size-1] = '\0';
+    }
 }
 
 /* Update all data symbols by adding an offset */
@@ -118,7 +159,7 @@ void update_data_symbols(symbol_table_t *table, int offset) {
     /* Update all data symbols */
     current = table->head;
     while (current) {
-        if (current->type == SYMBOL_DATA) {
+        if (current->attributes & SYMBOL_ATTR_DATA) {
             current->value += offset;
         }
         current = current->next;
@@ -128,6 +169,7 @@ void update_data_symbols(symbol_table_t *table, int offset) {
 /* Print the symbol table (for debugging) */
 void print_symbol_table(symbol_table_t *table) {
     symbol_t *current;
+    char attr_str[100];
 
     /* Check if the table is valid */
     if (!table) {
@@ -137,32 +179,14 @@ void print_symbol_table(symbol_table_t *table) {
 
     /* Print the table header */
     printf("Symbol Table:\n");
-    printf("Name                Value     Type\n");
+    printf("Name                Value     Attributes\n");
     printf("-----------------------------------------\n");
 
     /* Print all symbols */
     current = table->head;
     while (current) {
-        printf("%-20s %-8d ", current->name, current->value);
-
-        /* Print the type */
-        switch (current->type) {
-            case SYMBOL_CODE:
-                printf("CODE\n");
-                break;
-            case SYMBOL_DATA:
-                printf("DATA\n");
-                break;
-            case SYMBOL_EXTERNAL:
-                printf("EXTERNAL\n");
-                break;
-            case SYMBOL_ENTRY:
-                printf("ENTRY\n");
-                break;
-            default:
-                printf("UNKNOWN\n");
-        }
-
+        symbol_get_attr_string(current, attr_str, sizeof(attr_str));
+        printf("%-20s %-8d %s\n", current->name, current->value, attr_str);
         current = current->next;
     }
 }

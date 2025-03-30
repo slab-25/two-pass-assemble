@@ -1,6 +1,6 @@
 /**
  * @file symbol_table.h
- * @brief Symbol table management for the assembler
+ * @brief Symbol table management for the assembler with simplified attribute support
  */
 
 #ifndef SYMBOL_TABLE_H
@@ -9,12 +9,23 @@
 #include "assembler.h"
 
 /**
+ * @brief Symbol attributes using bit flags for more flexibility
+ */
+typedef enum {
+    SYMBOL_ATTR_NONE     = 0x00,  /* No attributes */
+    SYMBOL_ATTR_CODE     = 0x01,  /* Symbol is in code section */
+    SYMBOL_ATTR_DATA     = 0x02,  /* Symbol is in data section */
+    SYMBOL_ATTR_EXTERNAL = 0x04,  /* Symbol is defined externally */
+    SYMBOL_ATTR_ENTRY    = 0x08   /* Symbol is an entry point */
+} symbol_attr_t;
+
+/**
  * @brief Symbol table entry structure
  */
 typedef struct symbol {
     char name[MAX_LABEL_LENGTH];  /* Symbol name */
     int value;                    /* Memory address */
-    symbol_type_t type;           /* Symbol type (CODE, DATA, EXTERNAL, ENTRY) */
+    symbol_attr_t attributes;     /* Symbol attributes (bit flags) */
     struct symbol *next;          /* Pointer to the next symbol in the list */
 } symbol_t;
 
@@ -36,10 +47,10 @@ symbol_table_t* create_symbol_table();
  * @param table The symbol table
  * @param name The name of the symbol
  * @param value The value (address) of the symbol
- * @param type The type of the symbol
+ * @param attributes The attributes of the symbol
  * @return true if the symbol was added successfully, false otherwise
  */
-bool add_symbol(symbol_table_t *table, const char *name, int value, symbol_type_t type);
+bool add_symbol(symbol_table_t *table, const char *name, int value, symbol_attr_t attributes);
 
 /**
  * @brief Find a symbol by name
@@ -59,13 +70,29 @@ symbol_t* find_symbol(symbol_table_t *table, const char *name);
 bool update_symbol_value(symbol_table_t *table, const char *name, int value);
 
 /**
- * @brief Add an attribute to a symbol
+ * @brief Add attributes to a symbol
  * @param table The symbol table
  * @param name The name of the symbol to update
- * @param attr The attribute to add (e.g., SYMBOL_ENTRY)
- * @return true if the attribute was added successfully, false otherwise
+ * @param attributes The attributes to add (can be multiple with OR)
+ * @return true if the attributes were added successfully, false otherwise
  */
-bool add_symbol_attribute(symbol_table_t *table, const char *name, symbol_type_t attr);
+bool add_symbol_attributes(symbol_table_t *table, const char *name, symbol_attr_t attributes);
+
+/**
+ * @brief Check if a symbol has a specific attribute
+ * @param symbol The symbol to check
+ * @param attribute The attribute to check for
+ * @return true if the symbol has the attribute, false otherwise
+ */
+bool symbol_has_attribute(const symbol_t *symbol, symbol_attr_t attribute);
+
+/**
+ * @brief Get a string representation of symbol attributes
+ * @param symbol The symbol
+ * @param buffer The buffer to store the string
+ * @param size The size of the buffer
+ */
+void symbol_get_attr_string(const symbol_t *symbol, char *buffer, size_t size);
 
 /**
  * @brief Update all data symbols by adding an offset
@@ -85,5 +112,11 @@ void print_symbol_table(symbol_table_t *table);
  * @param table The symbol table to free
  */
 void free_symbol_table(symbol_table_t *table);
+
+/* Convenience macros for working with attributes */
+#define SYMBOL_IS_CODE(symbol) symbol_has_attribute((symbol), SYMBOL_ATTR_CODE)
+#define SYMBOL_IS_DATA(symbol) symbol_has_attribute((symbol), SYMBOL_ATTR_DATA)
+#define SYMBOL_IS_EXTERNAL(symbol) symbol_has_attribute((symbol), SYMBOL_ATTR_EXTERNAL)
+#define SYMBOL_IS_ENTRY(symbol) symbol_has_attribute((symbol), SYMBOL_ATTR_ENTRY)
 
 #endif /* SYMBOL_TABLE_H */

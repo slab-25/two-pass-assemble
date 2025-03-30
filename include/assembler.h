@@ -36,14 +36,6 @@ typedef enum {
     INST_TYPE_CODE      /* Machine instruction */
 } instruction_type_t;
 
-/* Symbol attributes */
-typedef enum {
-    SYMBOL_CODE,       /* Label for code section */
-    SYMBOL_DATA,       /* Label for data section */
-    SYMBOL_EXTERNAL,   /* External symbol */
-    SYMBOL_ENTRY       /* Entry point */
-} symbol_type_t;
-
 /* Addressing methods */
 typedef enum {
     ADDR_IMMEDIATE = 0,      /* #value */
@@ -98,8 +90,7 @@ typedef enum {
 #define EXT_ENTRY ".ent"      /* Entry points file extension */
 #define EXT_EXTERN ".ext"     /* External references file extension */
 
-/* Common error handling macro */
-#define REPORT_ERROR(filename, line, format, ...) \
-    fprintf(stderr, "Error in %s, line %d: " format "\n", filename, line, ##__VA_ARGS__)
+/* Version information */
+#define ASSEMBLER_VERSION "1.0.0"
 
 #endif /* ASSEMBLER_H */

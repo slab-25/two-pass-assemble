@@ -7,6 +7,7 @@
 #define PRE_ASSEMBLER_H
 
 #include "assembler.h"
+#include "error.h"
 
 /**
  * @brief Macro definition structure
@@ -35,17 +36,19 @@ macro_table_t* create_macro_table();
  * @brief Add a new macro to the table
  * @param table The macro table
  * @param name The name of the macro
+ * @param context Error context for reporting issues
  * @return true if the macro was added successfully, false otherwise
  */
-bool add_macro(macro_table_t *table, const char *name);
+bool add_macro(macro_table_t *table, const char *name, error_context_t *context);
 
 /**
  * @brief Add a line to the current macro being defined
  * @param table The macro table
  * @param line The line to add
+ * @param context Error context for reporting issues
  * @return true if the line was added successfully, false otherwise
  */
-bool add_line_to_macro(macro_table_t *table, const char *line);
+bool add_line_to_macro(macro_table_t *table, const char *line, error_context_t *context);
 
 /**
  * @brief Find a macro by name
@@ -64,8 +67,9 @@ void free_macro_table(macro_table_t *table);
 /**
  * @brief Process a source file to expand macros
  * @param filename The name of the source file
+ * @param context Error context for reporting issues
  * @return true if processing was successful, false otherwise
  */
-bool process_file(const char *filename);
+bool process_file(const char *filename, error_context_t *context);
 
 #endif /* PRE_ASSEMBLER_H */

@@ -7,15 +7,7 @@
 #define UTILS_H
 
 #include "assembler.h"
-
-/**
- * @brief Report an error with filename and line number
- * @param filename The source filename
- * @param line_number The line number where the error occurred
- * @param format The error message format
- * @param ... Additional arguments for the format string
- */
-void report_error(const char *filename, int line_number, const char *format, ...);
+#include "error.h"
 
 /**
  * @brief Trim whitespace from the beginning and end of a string
@@ -87,5 +79,10 @@ void get_base_filename(const char *filename, char *base);
  * @param result Output parameter for the result
  */
 void create_filename(const char *base, const char *extension, char *result);
+
+/**
+ * @brief Display version information of the assembler
+ */
+void print_version();
 
 #endif /* UTILS_H */

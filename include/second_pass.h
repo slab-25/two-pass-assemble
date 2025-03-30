@@ -9,6 +9,7 @@
 #include "assembler.h"
 #include "symbol_table.h"
 #include "first_pass.h"
+#include "error.h"
 
 /**
  * @brief Machine word structure
@@ -43,12 +44,31 @@ typedef struct external_reference {
 addressing_method_t get_addressing_method(const char *operand);
 
 /**
+ * @brief Encode an operand word based on its addressing method
+ * @param word Output parameter for the encoded word
+ * @param operand The operand string
+ * @param addr_method The addressing method
+ * @param symbols The symbol table
+ * @param current_address The current instruction address
+ * @param word_offset Offset from current address for this word
+ * @param ext_refs Output parameter for external references
+ * @param context Error context for reporting issues
+ * @return true if encoding was successful, false otherwise
+ */
+bool encode_operand_word(machine_word_t *word, const char *operand,
+                         addressing_method_t addr_method,
+                         symbol_table_t *symbols, int current_address,
+                         int word_offset, external_reference_t **ext_refs,
+                         error_context_t *context);
+
+/**
  * @brief Encode the first word of an instruction
  * @param opcode The operation code
  * @param src_addr The source addressing method
  * @param src_reg The source register number (if applicable)
  * @param dst_addr The destination addressing method
  * @param dst_reg The destination register number (if applicable)
+ * @param funct The function code (if applicable)
  * @return The encoded first word
  */
 machine_word_t encode_first_word(const char *opcode, addressing_method_t src_addr,
@@ -61,28 +81,31 @@ machine_word_t encode_first_word(const char *opcode, addressing_method_t src_add
  * @param code Output parameter for the encoded instruction
  * @param current_address The current instruction address
  * @param ext_refs Output parameter for external references
+ * @param context Error context for reporting issues
  * @return true if encoding was successful, false otherwise
  */
 bool encode_instruction(parsed_line_t *line, symbol_table_t *symbols,
                        instruction_code_t *code, int current_address,
-                       external_reference_t **ext_refs);
+                       external_reference_t **ext_refs, error_context_t *context);
 
 /**
  * @brief Process an entry directive
  * @param line The parsed line
  * @param symbols The symbol table
+ * @param context Error context for reporting issues
  * @return true if processing was successful, false otherwise
  */
-bool process_entry_second_pass(parsed_line_t *line, symbol_table_t *symbols);
+bool process_entry_second_pass(parsed_line_t *line, symbol_table_t *symbols, error_context_t *context);
 
 /**
  * @brief Add an external reference
  * @param ext_refs Pointer to the list of external references
  * @param name The name of the external symbol
  * @param address The address where it's referenced
+ * @param context Error context for reporting issues
  * @return true if the reference was added successfully, false otherwise
  */
-bool add_external_reference(external_reference_t **ext_refs, const char *name, int address);
+bool add_external_reference(external_reference_t **ext_refs, const char *name, int address, error_context_t *context);
 
 /**
  * @brief Free the list of external references
@@ -99,10 +122,12 @@ void free_external_references(external_reference_t *ext_refs);
  * @param ext_refs Output parameter for external references
  * @param ICF Output parameter for the final instruction counter
  * @param DCF Output parameter for the final data counter
+ * @param context Error context for reporting issues
  * @return true if the second pass was successful, false otherwise
  */
 bool second_pass(const char *filename, symbol_table_t *symbols,
                 machine_word_t **code_image, machine_word_t **data_image,
-                external_reference_t **ext_refs, int *ICF, int *DCF);
+                external_reference_t **ext_refs, int *ICF, int *DCF,
+                error_context_t *context);
 
 #endif /* SECOND_PASS_H */
