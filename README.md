@@ -1,10 +1,12 @@
 # Two-Pass Assembler
 
+![Logo](logo.png)
 A custom assembler for a 24-bit assembly language as defined in the Systems Programming Lab course.
 
 ## Project Overview
 
-This project implements a two-pass assembler that translates assembly language programs into machine code according to the specified language definition. The system follows a typical two-pass approach:
+This project implements a two-pass assembler that translates assembly language programs into machine code according to
+the specified language definition. The system follows a typical two-pass approach:
 
 1. **Pre-Assembler**: Expands macros and generates an expanded source file (.am)
 2. **First Pass**: Builds the symbol table and calculates addresses
@@ -61,6 +63,7 @@ This ensures a consistent Ubuntu 16.04 environment with proper C90 support.
 ```
 
 For each source file (.as), the assembler will generate:
+
 - A macro-expanded file (.am)
 - An object file (.ob) with machine code
 - An entry points file (.ent) if any entry points are defined
@@ -124,6 +127,7 @@ cd tests
 ```
 
 The test runner checks different aspects of the assembler:
+
 - Pre-assembler macro expansion
 - First pass symbol table construction
 - Second pass machine code generation
