@@ -74,18 +74,6 @@ char* str_duplicate(const char *str);
 bool is_reserved_word(const char *str);
 
 /**
- * @brief Parse a line into tokens (e.g., label, opcode, operands)
- * @param line The line to parse
- * @param label Output parameter for the label (if any)
- * @param opcode Output parameter for the opcode
- * @param operands Output parameter for the operands
- * @param operand_count Output parameter for the number of operands
- * @return true if parsing was successful, false otherwise
- */
-bool parse_line(const char *line, char *label, char *opcode,
-                char operands[MAX_OPERANDS][MAX_OPERAND_LENGTH], int *operand_count);
-
-/**
  * @brief Get the extension-less base name from a filename
  * @param filename The filename
  * @param base Output parameter for the base name

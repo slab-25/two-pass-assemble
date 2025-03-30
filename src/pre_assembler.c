@@ -1,12 +1,14 @@
+#define _POSIX_C_SOURCE 200809L
 /**
  * @file pre_assembler.c
  * @brief Implementation of the macro processor
  */
-
+#include <string.h>
 #include "../include/pre_assembler.h"
 #include "../include/utils.h"
 
 #define MAX_MACRO_LINES 1000  /* Maximum number of lines in a macro */
+#define MAX_MACRO_NESTING 10  /* Maximum nesting level for macros */
 
 /* Create a new macro table */
 macro_table_t* create_macro_table() {
@@ -143,9 +145,9 @@ bool process_file(const char *filename) {
     char output_filename[MAX_FILENAME_LENGTH];
     char line[MAX_LINE_LENGTH];
     macro_table_t *macro_table;
-    bool in_macro_def = false;
     bool success = true;
-    char macro_name[MAX_LABEL_LENGTH];
+    char macro_name_stack[MAX_MACRO_NESTING][MAX_LABEL_LENGTH];
+    int macro_nesting_level = 0;
     int line_number = 0;
     char *token, *saveptr;
 
@@ -215,8 +217,8 @@ bool process_file(const char *filename) {
 
         /* Check for macro definition start */
         if (token && strcmp(token, "mcro") == 0) {
-            if (in_macro_def) {
-                report_error(filename, line_number, "Nested macro definition");
+            if (macro_nesting_level >= MAX_MACRO_NESTING) {
+                report_error(filename, line_number, "Macro nesting level exceeded");
                 success = false;
                 continue;
             }
@@ -243,14 +245,14 @@ bool process_file(const char *filename) {
                 continue;
             }
 
-            /* Remember the macro name and that we're in a macro definition */
-            strcpy(macro_name, token);
-            in_macro_def = true;
+            /* Remember the macro name and increase nesting level */
+            strcpy(macro_name_stack[macro_nesting_level], token);
+            macro_nesting_level++;
             write_line = false;
         }
         /* Check for macro definition end */
         else if (token && strcmp(token, "endmcro") == 0) {
-            if (!in_macro_def) {
+            if (macro_nesting_level == 0) {
                 report_error(filename, line_number, "endmcro without matching mcro");
                 success = false;
                 continue;
@@ -263,12 +265,12 @@ bool process_file(const char *filename) {
                 continue;
             }
 
-            /* End the macro definition */
-            in_macro_def = false;
+            /* Decrease nesting level */
+            macro_nesting_level--;
             write_line = false;
         }
         /* Check for macro usage */
-        else if (token && !in_macro_def) {
+        else if (token && macro_nesting_level == 0) {
             macro_t *macro = find_macro(macro_table, token);
 
             if (macro) {
@@ -283,8 +285,8 @@ bool process_file(const char *filename) {
             }
         }
         /* Inside a macro definition */
-        else if (in_macro_def) {
-            /* Add the line to the macro */
+        else if (macro_nesting_level > 0) {
+            /* Add the line to the current macro */
             if (!add_line_to_macro(macro_table, line)) {
                 report_error(filename, line_number, "Could not add line to macro");
                 success = false;
@@ -301,7 +303,7 @@ bool process_file(const char *filename) {
     }
 
     /* Check if we ended with an open macro definition */
-    if (in_macro_def) {
+    if (macro_nesting_level > 0) {
         report_error(filename, line_number, "Macro definition not closed");
         success = false;
     }

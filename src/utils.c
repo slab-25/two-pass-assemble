@@ -136,7 +136,13 @@ int string_to_int(const char *str) {
 }
 
 char* str_duplicate(const char *str) {
-    char *result = (char *)malloc(strlen(str) + 1);
+    char *result;
+
+    if (!str) {
+        return NULL;
+    }
+
+    result = (char *)malloc(strlen(str) + 1);
     if (result) {
         strcpy(result, str);
     }
@@ -145,6 +151,10 @@ char* str_duplicate(const char *str) {
 
 bool is_reserved_word(const char *str) {
     int i;
+
+    if (!str) {
+        return false;
+    }
 
     for (i = 0; reserved_words[i] != NULL; i++) {
         if (strcmp(str, reserved_words[i]) == 0) {
@@ -155,67 +165,13 @@ bool is_reserved_word(const char *str) {
     return false;
 }
 
-bool parse_line(const char *line, char *label, char *opcode,
-                char operands[MAX_OPERANDS][MAX_OPERAND_LENGTH], int *operand_count) {
-    char temp_line[MAX_LINE_LENGTH];
-    char *token, *saveptr1, *saveptr2;
-    bool has_label = false;
-
-    /* Initialize outputs */
-    *label = '\0';
-    *opcode = '\0';
-    *operand_count = 0;
-
-    /* Copy the line to avoid modifying the original */
-    strncpy(temp_line, line, MAX_LINE_LENGTH - 1);
-    temp_line[MAX_LINE_LENGTH - 1] = '\0';
-
-    /* Remove comments */
-    token = strchr(temp_line, ';');
-    if (token) {
-        *token = '\0';
-    }
-
-    /* Trim whitespace */
-    trim(temp_line);
-
-    /* Empty line after removing comments */
-    if (temp_line[0] == '\0') {
-        return true;
-    }
-
-    /* Check for label */
-    token = strchr(temp_line, ':');
-    if (token) {
-        has_label = true;
-        *token = '\0';  /* Split at the colon */
-        strcpy(label, trim(temp_line));
-        token++;  /* Move past the colon */
-    } else {
-        token = temp_line;
-    }
-
-    /* Get the opcode */
-    token = strtok_r(has_label ? token : temp_line, " \t", &saveptr1);
-    if (!token) {
-        return false;  /* No opcode found */
-    }
-    strcpy(opcode, token);
-
-    /* Get the operands */
-    token = strtok_r(NULL, ",", &saveptr1);
-    while (token && *operand_count < MAX_OPERANDS) {
-        strcpy(operands[*operand_count], trim(token));
-        (*operand_count)++;
-        token = strtok_r(NULL, ",", &saveptr1);
-    }
-
-    return true;
-}
-
 void get_base_filename(const char *filename, char *base) {
     const char *ext;
     size_t len;
+
+    if (!filename || !base) {
+        return;
+    }
 
     /* Find the extension */
     ext = strrchr(filename, '.');
@@ -231,5 +187,9 @@ void get_base_filename(const char *filename, char *base) {
 }
 
 void create_filename(const char *base, const char *extension, char *result) {
+    if (!base || !extension || !result) {
+        return;
+    }
+
     sprintf(result, "%s%s", base, extension);
 }
