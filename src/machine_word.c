@@ -4,6 +4,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "../include/machine_word.h"
 
 /* Bit field positions in 24-bit machine word */
@@ -114,15 +115,21 @@ void word_set_are(machine_word_t *word, are_type_t are) {
 
 /* Get a string representation of a machine word for debugging */
 void word_to_string(const machine_word_t *word, char *buffer, size_t size) {
+    char are_str[4];
+
     if (!word || !buffer || size == 0) {
         return;
     }
 
-    snprintf(buffer, size, "Value: 0x%06X, ARE: %s%s%s",
-             (word->value << 3) | word->are,
-             (word->are & WORD_ARE_ABSOLUTE) ? "A" : "-",
-             (word->are & WORD_ARE_RELOCATABLE) ? "R" : "-",
-             (word->are & WORD_ARE_EXTERNAL) ? "E" : "-");
+    /* Create ARE string representation first */
+    are_str[0] = (word->are & WORD_ARE_ABSOLUTE) ? 'A' : '-';
+    are_str[1] = (word->are & WORD_ARE_RELOCATABLE) ? 'R' : '-';
+    are_str[2] = (word->are & WORD_ARE_EXTERNAL) ? 'E' : '-';
+    are_str[3] = '\0';
+
+    /* Format using sprintf (C90 compliant) */
+    sprintf(buffer, "Value: 0x%06X, ARE: %s",
+            (word->value << 3) | word->are, are_str);
 }
 
 /* Encode the first word of an instruction */

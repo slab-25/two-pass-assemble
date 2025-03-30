@@ -368,14 +368,16 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
 
         /* Process the line based on its type */
         switch (parsed_line.type) {
-            case INST_TYPE_DATA:
-            case INST_TYPE_STRING:
-                /* Data and string directives don't need processing in second pass */
-                DC += parsed_line.type == INST_TYPE_DATA ?
-                      parse_numbers_list(parsed_line.operands[0], NULL, 0, context) :
-                      strlen(parsed_line.operands[0]) - 2 + 1; /* -2 for quotes, +1 for null */
-                break;
-
+                    case INST_TYPE_DATA:
+                    case INST_TYPE_STRING:
+                        /* Data and string directives don't need processing in second pass */
+                        if (parsed_line.type == INST_TYPE_DATA) {
+                            DC += parse_numbers_list(parsed_line.operands[0], NULL, 0, context);
+                        } else {
+                            /* String: -2 for quotes, +1 for null terminator */
+                            DC += strlen(parsed_line.operands[0]) - 2 + 1;
+                        }
+                        break;
             case INST_TYPE_ENTRY:
                 if (!process_entry_second_pass(&parsed_line, symbols, context)) {
                     success = false;

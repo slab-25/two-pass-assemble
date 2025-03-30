@@ -115,6 +115,8 @@ bool symbol_has_attribute(const symbol_t *symbol, symbol_attr_t attribute) {
 
 /* Get a string representation of symbol attributes */
 void symbol_get_attr_string(const symbol_t *symbol, char *buffer, size_t size) {
+    size_t len;
+
     if (!symbol || !buffer || size == 0) {
         return;
     }
@@ -135,7 +137,7 @@ void symbol_get_attr_string(const symbol_t *symbol, char *buffer, size_t size) {
     }
 
     /* Remove trailing space if there is one */
-    size_t len = strlen(buffer);
+    len = strlen(buffer);
     if (len > 0 && buffer[len-1] == ' ') {
         buffer[len-1] = '\0';
     }

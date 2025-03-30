@@ -29,7 +29,6 @@ bool process_assembly_file(const char *filename) {
     machine_word_t *data_image = NULL;
     external_reference_t *ext_refs = NULL;
     int ICF = 0, DCF = 0;
-    bool success = true;
     error_context_t context;
 
     /* Initialize error context */
