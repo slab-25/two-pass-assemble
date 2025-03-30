@@ -273,7 +273,29 @@ bool process_file(const char *filename) {
         else if (token && macro_nesting_level == 0) {
             macro_t *macro = find_macro(macro_table, token);
 
-            if (macro) {
+            /* Check if this is a label followed by a macro */
+            if (!macro && token[strlen(token) - 1] == ':') {
+                /* This might be a label, check if next token is a macro */
+                char *next_token = strtok_r(NULL, " \t", &saveptr);
+                if (next_token) {
+                    macro = find_macro(macro_table, next_token);
+                    if (macro) {
+                        int i;
+
+                        /* Write the label part */
+                        fprintf(output, "%s ", token);
+
+                        /* Replace the macro with its lines */
+                        for (i = 0; i < macro->line_count; i++) {
+                            fprintf(output, "%s\n", macro->lines[i]);
+                        }
+
+                        write_line = false;
+                    }
+                }
+            }
+            /* Regular case - token is directly a macro */
+            else if (macro) {
                 int i;
 
                 /* Replace the macro with its lines */

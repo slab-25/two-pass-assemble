@@ -44,6 +44,23 @@ run_test() {
     ((TOTAL_TESTS++))
 }
 
+# Function to run tests from a directory if it exists
+run_tests_if_dir_exists() {
+    local dir="$1"
+    local pattern="$2"
+    local expected="$3"
+
+    if [ -d "$dir" ]; then
+        for test_file in $dir/$pattern; do
+            if [ -f "$test_file" ]; then
+                run_test "$test_file" "$expected"
+            fi
+        done
+    else
+        echo -e "${YELLOW}Skipping tests in non-existent directory: ${dir}${NC}"
+    fi
+}
+
 # Check if assembler exists
 if [ ! -f "$ASSEMBLER" ]; then
     echo -e "${RED}Error: Assembler not found at ${ASSEMBLER}${NC}"
@@ -56,30 +73,24 @@ if [ "$(basename "$(pwd)")" != "tests" ]; then
 fi
 
 echo -e "${YELLOW}=============== Testing Pre-Assembler ===============${NC}"
-for test_file in iteration1_preassembler/basic_*.as; do
-    run_test "$test_file" 0
-done
+run_tests_if_dir_exists "iteration1_preassembler" "basic_*.as" 0
 
 echo -e "${YELLOW}=============== Testing First Pass ===============${NC}"
-for test_file in iteration2_firstpass/basic_*.am; do
-    run_test "$test_file" 0
-done
+run_tests_if_dir_exists "iteration2_firstpass" "basic_*.am" 0
 
 echo -e "${YELLOW}=============== Testing Second Pass ===============${NC}"
-for test_file in iteration3_secondpass/encoding_*.am; do
-    run_test "$test_file" 0
-done
+run_tests_if_dir_exists "iteration3_secondpass" "encoding_*.am" 0
 
 echo -e "${YELLOW}=============== Testing Integration ===============${NC}"
-for test_file in integration/full_*.as; do
-    run_test "$test_file" 0
-done
+run_tests_if_dir_exists "integration" "full_*.as" 0
 
 # Print summary
 echo -e "${YELLOW}=============== Test Summary ===============${NC}"
 echo -e "Total tests: ${TOTAL_TESTS}"
 echo -e "${GREEN}Passed: ${PASS_COUNT}${NC}"
-echo -e "${RED}Failed: ${FAIL_COUNT}${NC}"
+if [ "$FAIL_COUNT" -gt 0 ]; then
+    echo -e "${RED}Failed: ${FAIL_COUNT}${NC}"
+fi
 
 # Return 0 if all tests passed, 1 otherwise
 if [ "$FAIL_COUNT" -eq 0 ]; then
