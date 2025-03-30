@@ -1,1 +1,1 @@
-# Updated Makefile with output generation components
+# Final Makefile with all components and executable target
