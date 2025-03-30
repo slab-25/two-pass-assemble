@@ -1,5 +1,5 @@
 /**
-* @file main.c
+ * @file main.c
  * @brief Main entry point for the assembler
  *
  * This implementation complies with C90 standard and is designed to compile
@@ -33,6 +33,11 @@ int main(int argc, char *argv[]) {
     /* Process each file */
     for (i = 1; i < argc; i++) {
         char filename[MAX_FILENAME_LENGTH];
+        symbol_table_t *symbols = NULL;
+        machine_word_t *code_image = NULL;
+        machine_word_t *data_image = NULL;
+        external_reference_t *ext_refs = NULL;
+        int ICF = 0, DCF = 0;
 
         /* Create base filename without extension */
         strncpy(filename, argv[i], MAX_FILENAME_LENGTH - 1);
@@ -47,10 +52,53 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        printf("Pre-assembler phase successful for %s\n", filename);
+
+        /* Step 2: Create symbol table and perform first pass */
+        symbols = create_symbol_table();
+        if (!symbols) {
+            fprintf(stderr, "Memory allocation error for symbol table\n");
+            success = false;
+            continue;
+        }
+
+        if (!first_pass(filename, symbols)) {
+            fprintf(stderr, "Error in first pass phase for %s\n", filename);
+            free_symbol_table(symbols);
+            success = false;
+            continue;
+        }
+
+        printf("First pass phase successful for %s\n", filename);
+
+        /* Step 3: Perform second pass - encode instructions */
+        if (!second_pass(filename, symbols, &code_image, &data_image, &ext_refs, &ICF, &DCF)) {
+            fprintf(stderr, "Error in second pass phase for %s\n", filename);
+            free_symbol_table(symbols);
+            success = false;
+            continue;
+        }
+
+        printf("Second pass phase successful for %s\n", filename);
+
+        /* Step 4: Generate output files */
+        if (!generate_output_files(filename, symbols, code_image, data_image, ext_refs, ICF, DCF)) {
+            fprintf(stderr, "Error in output generation phase for %s\n", filename);
+            free_symbol_table(symbols);
+            free(code_image);
+            free(data_image);
+            free_external_references(ext_refs);
+            success = false;
+            continue;
+        }
+
         printf("Successfully processed %s\n", filename);
 
-        /* Placeholder for first and second pass */
-        /* This will be implemented in subsequent phases */
+        /* Clean up resources */
+        free_symbol_table(symbols);
+        free(code_image);
+        free(data_image);
+        free_external_references(ext_refs);
     }
 
     return success ? 0 : 1;
