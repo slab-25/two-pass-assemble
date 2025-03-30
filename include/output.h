@@ -63,11 +63,15 @@ bool write_entries_file(const char* filename, symbol_table_t* symbols);
  */
 bool write_externals_file(const char* filename, external_reference_t* ext_refs);
 
+
+
+
+
 /**
  * @brief Check if symbol table has entries
  * @param symbols The symbol table
  * @return true if the symbol table has entries, false otherwise
  */
-bool has_entries(symbol_table_t* symbols);
+bool has_entries(symbol_table_t *symbols);
 
 #endif /* OUTPUT_H */

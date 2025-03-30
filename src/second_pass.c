@@ -9,12 +9,101 @@
 #include "../include/second_pass.h"
 #include "../include/utils.h"
 
+
+
+#ifndef strtok_r
+/**
+ * @brief Implementation of strtok_r for C90 compatibility
+ * @param str String to tokenize
+ * @param delim Delimiter string
+ * @param saveptr Pointer to save context between calls
+ * @return Next token or NULL if no more tokens
+ */
+static char *strtok_r(char *str, const char *delim, char **saveptr) {
+    char *token;
+
+    if (str == NULL)
+        str = *saveptr;
+
+    /* Skip leading delimiters */
+    str += strspn(str, delim);
+    if (*str == '\0') {
+        *saveptr = str;
+        return NULL;
+    }
+
+    /* Find the end of the token */
+    token = str;
+    str = strpbrk(str, delim);
+    if (str == NULL) {
+        /* This token finishes the string */
+        *saveptr = strchr(token, '\0');
+    } else {
+        /* Terminate the token and make saveptr point to the rest of the string */
+        *str = '\0';
+        *saveptr = str + 1;
+    }
+
+    return token;
+}
+#endif
+
+/**
+ * @brief Parse a list of comma-separated numbers
+ * @param str The string to parse
+ * @param numbers Array to store the parsed numbers (can be NULL to just count)
+ * @param max_count Maximum number of numbers to parse (0 for unlimited)
+ * @return Number of numbers parsed, or -1 on error
+ */
+static int parse_numbers_list(const char *str, int numbers[], int max_count) {
+    char str_copy[MAX_LINE_LENGTH];
+    char *token;
+    char *context = NULL;
+    int count = 0;
+
+    if (!str) {
+        return 0;
+    }
+
+    /* Copy the string for tokenization */
+    strncpy(str_copy, str, MAX_LINE_LENGTH - 1);
+    str_copy[MAX_LINE_LENGTH - 1] = '\0';
+
+    /* Get the first token */
+    token = strtok_r(str_copy, ",", &context);
+
+    /* Parse each token */
+    while (token && (max_count == 0 || count < max_count)) {
+        /* Trim whitespace */
+        token = trim(token);
+
+        /* Check if the token is a valid integer */
+        if (!is_integer(token)) {
+            return -1;
+        }
+
+        /* Convert to integer and store */
+        if (numbers) {
+            numbers[count] = string_to_int(token);
+        }
+        count++;
+
+        /* Get the next token */
+        token = strtok_r(NULL, ",", &context);
+    }
+
+    return count;
+}
+
+
+
 /* Forward declarations for internal functions */
 static bool encode_data_image(machine_word_t **data_image, int *DCF, const char *filename);
 static bool encode_address_word(machine_word_t *word, int address, int are);
 static opcode_t get_opcode(const char *opcode_str);
 static funct_t get_funct(const char *opcode_str);
 static bool is_two_operand_instruction(opcode_t opcode);
+
 
 /* Determine the addressing method for an operand */
 addressing_method_t get_addressing_method(const char *operand) {
@@ -695,43 +784,3 @@ static bool is_two_operand_instruction(opcode_t opcode) {
            opcode == OP_ADD || opcode == OP_LEA;
 }
 
-/* Helper function to parse a list of comma-separated numbers */
-static int parse_numbers_list(const char *str, int numbers[], int max_count) {
-    char str_copy[MAX_LINE_LENGTH];
-    char *token;
-    char *context = NULL;
-    int count = 0;
-
-    if (!str) {
-        return 0;
-    }
-
-    /* Copy the string for tokenization */
-    strncpy(str_copy, str, MAX_LINE_LENGTH - 1);
-    str_copy[MAX_LINE_LENGTH - 1] = '\0';
-
-    /* Get the first token */
-    token = strtok_r(str_copy, ",", &context);
-
-    /* Parse each token */
-    while (token && (max_count == 0 || count < max_count)) {
-        /* Trim whitespace */
-        token = trim(token);
-
-        /* Check if the token is a valid integer */
-        if (!is_integer(token)) {
-            return -1;
-        }
-
-        /* Convert to integer and store */
-        if (numbers) {
-            numbers[count] = string_to_int(token);
-        }
-        count++;
-
-        /* Get the next token */
-        token = strtok_r(NULL, ",", &context);
-    }
-
-    return count;
-}
