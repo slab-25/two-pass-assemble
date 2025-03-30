@@ -13,10 +13,11 @@
 /**
  * @brief Output files structure
  */
-typedef struct {
-    FILE *ob;   /* Object file (.ob) */
-    FILE *ent;  /* Entries file (.ent) */
-    FILE *ext;  /* Externals file (.ext) */
+typedef struct
+{
+    FILE* ob; /* Object file (.ob) */
+    FILE* ent; /* Entries file (.ent) */
+    FILE* ext; /* Externals file (.ext) */
 } output_files_t;
 
 /**
@@ -30,9 +31,9 @@ typedef struct {
  * @param DCF The final data counter
  * @return true if generation was successful, false otherwise
  */
-bool generate_output_files(const char *filename, symbol_table_t *symbols,
-                         machine_word_t *code_image, machine_word_t *data_image,
-                         external_reference_t *ext_refs, int ICF, int DCF);
+bool generate_output_files(const char* filename, symbol_table_t* symbols,
+                           machine_word_t* code_image, machine_word_t* data_image,
+                           external_reference_t* ext_refs, int ICF, int DCF);
 
 /**
  * @brief Write the object file
@@ -43,8 +44,8 @@ bool generate_output_files(const char *filename, symbol_table_t *symbols,
  * @param DCF The final data counter
  * @return true if writing was successful, false otherwise
  */
-bool write_object_file(const char *filename, machine_word_t *code_image,
-                      machine_word_t *data_image, int ICF, int DCF);
+bool write_object_file(const char* filename, machine_word_t* code_image,
+                       machine_word_t* data_image, int ICF, int DCF);
 
 /**
  * @brief Write the entries file
@@ -52,7 +53,7 @@ bool write_object_file(const char *filename, machine_word_t *code_image,
  * @param symbols The symbol table
  * @return true if writing was successful, false otherwise
  */
-bool write_entries_file(const char *filename, symbol_table_t *symbols);
+bool write_entries_file(const char* filename, symbol_table_t* symbols);
 
 /**
  * @brief Write the externals file
@@ -60,6 +61,13 @@ bool write_entries_file(const char *filename, symbol_table_t *symbols);
  * @param ext_refs The list of external references
  * @return true if writing was successful, false otherwise
  */
-bool write_externals_file(const char *filename, external_reference_t *ext_refs);
+bool write_externals_file(const char* filename, external_reference_t* ext_refs);
+
+/**
+ * @brief Check if symbol table has entries
+ * @param symbols The symbol table
+ * @return true if the symbol table has entries, false otherwise
+ */
+bool has_entries(symbol_table_t* symbols);
 
 #endif /* OUTPUT_H */
