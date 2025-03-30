@@ -1,1 +1,1 @@
-# Updated Makefile with second pass components
+# Updated Makefile with output generation components
