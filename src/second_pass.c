@@ -8,102 +8,15 @@
 #include <string.h>
 #include "../include/second_pass.h"
 #include "../include/utils.h"
-
-
-
-#ifndef strtok_r
-/**
- * @brief Implementation of strtok_r for C90 compatibility
- * @param str String to tokenize
- * @param delim Delimiter string
- * @param saveptr Pointer to save context between calls
- * @return Next token or NULL if no more tokens
- */
-static char *strtok_r(char *str, const char *delim, char **saveptr) {
-    char *token;
-
-    if (str == NULL)
-        str = *saveptr;
-
-    /* Skip leading delimiters */
-    str += strspn(str, delim);
-    if (*str == '\0') {
-        *saveptr = str;
-        return NULL;
-    }
-
-    /* Find the end of the token */
-    token = str;
-    str = strpbrk(str, delim);
-    if (str == NULL) {
-        /* This token finishes the string */
-        *saveptr = strchr(token, '\0');
-    } else {
-        /* Terminate the token and make saveptr point to the rest of the string */
-        *str = '\0';
-        *saveptr = str + 1;
-    }
-
-    return token;
-}
-#endif
-
-/**
- * @brief Parse a list of comma-separated numbers
- * @param str The string to parse
- * @param numbers Array to store the parsed numbers (can be NULL to just count)
- * @param max_count Maximum number of numbers to parse (0 for unlimited)
- * @return Number of numbers parsed, or -1 on error
- */
-static int parse_numbers_list(const char *str, int numbers[], int max_count) {
-    char str_copy[MAX_LINE_LENGTH];
-    char *token;
-    char *context = NULL;
-    int count = 0;
-
-    if (!str) {
-        return 0;
-    }
-
-    /* Copy the string for tokenization */
-    strncpy(str_copy, str, MAX_LINE_LENGTH - 1);
-    str_copy[MAX_LINE_LENGTH - 1] = '\0';
-
-    /* Get the first token */
-    token = strtok_r(str_copy, ",", &context);
-
-    /* Parse each token */
-    while (token && (max_count == 0 || count < max_count)) {
-        /* Trim whitespace */
-        token = trim(token);
-
-        /* Check if the token is a valid integer */
-        if (!is_integer(token)) {
-            return -1;
-        }
-
-        /* Convert to integer and store */
-        if (numbers) {
-            numbers[count] = string_to_int(token);
-        }
-        count++;
-
-        /* Get the next token */
-        token = strtok_r(NULL, ",", &context);
-    }
-
-    return count;
-}
-
-
+#include "../include/machine_word.h"
 
 /* Forward declarations for internal functions */
-static bool encode_data_image(machine_word_t **data_image, int *DCF, const char *filename);
-static bool encode_address_word(machine_word_t *word, int address, int are);
+static bool encode_data_image(machine_word_t **data_image, int *DCF, const char *filename, error_context_t *context);
 static opcode_t get_opcode(const char *opcode_str);
 static funct_t get_funct(const char *opcode_str);
 static bool is_two_operand_instruction(opcode_t opcode);
-
+static char *safe_strtok_r(char *str, const char *delim, char **saveptr);
+static int parse_numbers_list(const char *str, int numbers[], int max_count, error_context_t *context);
 
 /* Determine the addressing method for an operand */
 addressing_method_t get_addressing_method(const char *operand) {
@@ -130,51 +43,90 @@ addressing_method_t get_addressing_method(const char *operand) {
     return ADDR_DIRECT;
 }
 
-/* Encode the first word of an instruction */
-machine_word_t encode_first_word(const char *opcode_str, addressing_method_t src_addr,
-                               int src_reg, addressing_method_t dst_addr, int dst_reg) {
-    machine_word_t word = {0};
-    opcode_t opcode = get_opcode(opcode_str);
-    funct_t funct = get_funct(opcode_str);
-    unsigned int value = 0;
+/* Encode an operand word based on addressing method */
+bool encode_operand_word(machine_word_t *word, const char *operand,
+                        addressing_method_t addr_method,
+                        symbol_table_t *symbols, int current_address,
+                        int word_offset, external_reference_t **ext_refs,
+                        error_context_t *context) {
+    symbol_t *symbol;
+    int value, address, target_dist;
+    char symbol_name[MAX_LABEL_LENGTH];
 
-    /* Set the opcode (bits 18-23) */
-    value |= (opcode & 0x0F) << 18;
-
-    /* Set source addressing method (bits 16-17) */
-    if (is_two_operand_instruction(opcode)) {
-        value |= (src_addr & 0x03) << 16;
+    /* Validate parameters */
+    if (!word || !operand) {
+        report_context_error(context, "Invalid parameters for encode_operand_word");
+        return false;
     }
 
-    /* Set source register (bits 13-15) */
-    if (src_addr == ADDR_REGISTER) {
-        value |= (src_reg & 0x07) << 13;
+    switch (addr_method) {
+        case ADDR_IMMEDIATE:
+            /* Skip the '#' character and convert to integer */
+            if (!is_integer(operand + 1)) {
+                report_context_error(context, "Invalid immediate value: %s", operand);
+                return false;
+            }
+            value = string_to_int(operand + 1);
+            *word = encode_immediate(value);
+            break;
+
+        case ADDR_DIRECT:
+            /* Look up symbol in the symbol table */
+            symbol = find_symbol(symbols, operand);
+            if (!symbol) {
+                report_context_error(context, "Undefined symbol: %s", operand);
+                return false;
+            }
+
+            /* Encode the symbol's address */
+            *word = encode_direct_address(symbol->value,
+                                         symbol_has_attribute(symbol, SYMBOL_ATTR_EXTERNAL));
+
+            /* If external, add to external references */
+            if (symbol_has_attribute(symbol, SYMBOL_ATTR_EXTERNAL)) {
+                if (!add_external_reference(ext_refs, operand, current_address + word_offset, context)) {
+                    return false;
+                }
+            }
+            break;
+
+        case ADDR_RELATIVE:
+            /* Skip the '&' character */
+            strncpy(symbol_name, operand + 1, MAX_LABEL_LENGTH - 1);
+            symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
+
+            /* Look up symbol in the symbol table */
+            symbol = find_symbol(symbols, symbol_name);
+            if (!symbol) {
+                report_context_error(context, "Undefined symbol: %s", symbol_name);
+                return false;
+            }
+
+            /* Calculate the distance (target address - current address) */
+            address = symbol->value;
+            target_dist = address - (current_address + word_offset);
+
+            /* Encode the relative distance */
+            *word = encode_relative_address(target_dist);
+            break;
+
+        case ADDR_REGISTER:
+            /* Register addressing is handled in first word or shared register word */
+            *word = encode_register_word(-1, get_register_number(operand));
+            break;
+
+        default:
+            report_context_error(context, "Invalid addressing method");
+            return false;
     }
 
-    /* Set destination addressing method (bits 11-12) */
-    value |= (dst_addr & 0x03) << 11;
-
-    /* Set destination register (bits 8-10) */
-    if (dst_addr == ADDR_REGISTER) {
-        value |= (dst_reg & 0x07) << 8;
-    }
-
-    /* Set function code (bits 3-7) */
-    value |= (funct & 0x0F) << 3;
-
-    /* Set ARE bits (bits 0-2) - First word is always absolute (100) */
-    value |= ARE_ABSOLUTE;
-
-    word.value = value;
-    word.ARE = ARE_ABSOLUTE;
-
-    return word;
+    return true;
 }
 
 /* Encode a machine instruction */
 bool encode_instruction(parsed_line_t *line, symbol_table_t *symbols,
                        instruction_code_t *code, int current_address,
-                       external_reference_t **ext_refs) {
+                       external_reference_t **ext_refs, error_context_t *context) {
     const char *opcode = line->opcode;
     const char *operand1 = line->operand_count > 0 ? line->operands[0] : NULL;
     const char *operand2 = line->operand_count > 1 ? line->operands[1] : NULL;
@@ -182,12 +134,20 @@ bool encode_instruction(parsed_line_t *line, symbol_table_t *symbols,
     addressing_method_t dst_addr = ADDR_IMMEDIATE;
     int src_reg = 0, dst_reg = 0;
     int word_idx = 0;
-    symbol_t *symbol;
-    int address, target_dist;
-    char symbol_name[MAX_LABEL_LENGTH];
+    opcode_t op_code;
+    funct_t funct_code;
+
+    /* Set current line number in error context */
+    if (context) {
+        context->line_number = line->line_number;
+    }
 
     /* Initialize instruction code */
     memset(code, 0, sizeof(instruction_code_t));
+
+    /* Get opcode and funct values */
+    op_code = get_opcode(opcode);
+    funct_code = get_funct(opcode);
 
     /* Determine operand addressing methods and register numbers */
     if (operand1) {
@@ -216,194 +176,44 @@ bool encode_instruction(parsed_line_t *line, symbol_table_t *symbols,
         src_reg = 0;
     }
 
-    /* Encode the first word */
-    code->words[word_idx++] = encode_first_word(opcode, src_addr, src_reg, dst_addr, dst_reg);
+    /* Encode the first word - instruction word */
+    code->words[word_idx++] = encode_instruction_word(op_code, src_addr, src_reg, dst_addr, dst_reg, funct_code);
 
-    /* Encode additional words for the first operand */
-    if (operand1 && is_two_operand_instruction(get_opcode(opcode))) {
-        switch (src_addr) {
-            case ADDR_IMMEDIATE:
-                /* Skip the '#' character and convert to integer */
-                code->words[word_idx].value = string_to_int(operand1 + 1);
-                code->words[word_idx].ARE = ARE_ABSOLUTE;
-                word_idx++;
-                break;
-
-            case ADDR_DIRECT:
-                /* Look up symbol in the symbol table */
-                symbol = find_symbol(symbols, operand1);
-                if (!symbol) {
-                    report_error("second_pass", 0, "Undefined symbol: %s", operand1);
-                    return false;
-                }
-
-                /* Encode the symbol's address */
-                code->words[word_idx].value = symbol->value;
-
-                /* Set ARE bits */
-                if (symbol->type == SYMBOL_EXTERNAL) {
-                    code->words[word_idx].ARE = ARE_EXTERNAL;
-                    /* Add external reference */
-                    if (!add_external_reference(ext_refs, operand1, current_address + word_idx)) {
-                        return false;
-                    }
-                } else {
-                    code->words[word_idx].ARE = ARE_RELOCATABLE;
-                }
-
-                word_idx++;
-                break;
-
-            case ADDR_RELATIVE:
-                /* Skip the '&' character */
-                strncpy(symbol_name, operand1 + 1, MAX_LABEL_LENGTH - 1);
-                symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
-
-                /* Look up symbol in the symbol table */
-                symbol = find_symbol(symbols, symbol_name);
-                if (!symbol) {
-                    report_error("second_pass", 0, "Undefined symbol: %s", symbol_name);
-                    return false;
-                }
-
-                /* Calculate the distance (target address - current address) */
-                address = symbol->value;
-                target_dist = address - (current_address + word_idx);
-
-                /* Encode the relative distance */
-                code->words[word_idx].value = target_dist;
-                code->words[word_idx].ARE = ARE_RELOCATABLE;
-                word_idx++;
-                break;
-
-            case ADDR_REGISTER:
-                /* Register addressing is handled in the first word */
-                break;
-        }
+    /* Special case: if both operands are registers, encode them in a shared register word */
+    if (operand1 && operand2 && src_addr == ADDR_REGISTER && dst_addr == ADDR_REGISTER) {
+        code->words[word_idx++] = encode_register_word(src_reg, dst_reg);
     }
-
-    /* Encode additional words for the second operand */
-    if (operand2) {
-        switch (dst_addr) {
-            case ADDR_IMMEDIATE:
-                /* Skip the '#' character and convert to integer */
-                code->words[word_idx].value = string_to_int(operand2 + 1);
-                code->words[word_idx].ARE = ARE_ABSOLUTE;
-                word_idx++;
-                break;
-
-            case ADDR_DIRECT:
-                /* Look up symbol in the symbol table */
-                symbol = find_symbol(symbols, operand2);
-                if (!symbol) {
-                    report_error("second_pass", 0, "Undefined symbol: %s", operand2);
+    else {
+        /* Encode additional words for the first operand */
+        if (operand1 && is_two_operand_instruction(op_code)) {
+            if (src_addr != ADDR_REGISTER) {
+                if (!encode_operand_word(&code->words[word_idx], operand1, src_addr, symbols,
+                                      current_address, word_idx, ext_refs, context)) {
                     return false;
                 }
-
-                /* Encode the symbol's address */
-                code->words[word_idx].value = symbol->value;
-
-                /* Set ARE bits */
-                if (symbol->type == SYMBOL_EXTERNAL) {
-                    code->words[word_idx].ARE = ARE_EXTERNAL;
-                    /* Add external reference */
-                    if (!add_external_reference(ext_refs, operand2, current_address + word_idx)) {
-                        return false;
-                    }
-                } else {
-                    code->words[word_idx].ARE = ARE_RELOCATABLE;
-                }
-
                 word_idx++;
-                break;
-
-            case ADDR_RELATIVE:
-                /* Skip the '&' character */
-                strncpy(symbol_name, operand2 + 1, MAX_LABEL_LENGTH - 1);
-                symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
-
-                /* Look up symbol in the symbol table */
-                symbol = find_symbol(symbols, symbol_name);
-                if (!symbol) {
-                    report_error("second_pass", 0, "Undefined symbol: %s", symbol_name);
-                    return false;
-                }
-
-                /* Calculate the distance (target address - current address) */
-                address = symbol->value;
-                target_dist = address - (current_address + word_idx);
-
-                /* Encode the relative distance */
-                code->words[word_idx].value = target_dist;
-                code->words[word_idx].ARE = ARE_RELOCATABLE;
-                word_idx++;
-                break;
-
-            case ADDR_REGISTER:
-                /* Register addressing is handled in the first word */
-                break;
+            }
         }
-    }
-    /* Single operand instruction */
-    else if (operand1 && !is_two_operand_instruction(get_opcode(opcode))) {
-        switch (dst_addr) {
-            case ADDR_IMMEDIATE:
-                /* Skip the '#' character and convert to integer */
-                code->words[word_idx].value = string_to_int(operand1 + 1);
-                code->words[word_idx].ARE = ARE_ABSOLUTE;
-                word_idx++;
-                break;
 
-            case ADDR_DIRECT:
-                /* Look up symbol in the symbol table */
-                symbol = find_symbol(symbols, operand1);
-                if (!symbol) {
-                    report_error("second_pass", 0, "Undefined symbol: %s", operand1);
+        /* Encode additional words for the second operand */
+        if (operand2) {
+            if (dst_addr != ADDR_REGISTER) {
+                if (!encode_operand_word(&code->words[word_idx], operand2, dst_addr, symbols,
+                                      current_address, word_idx, ext_refs, context)) {
                     return false;
                 }
-
-                /* Encode the symbol's address */
-                code->words[word_idx].value = symbol->value;
-
-                /* Set ARE bits */
-                if (symbol->type == SYMBOL_EXTERNAL) {
-                    code->words[word_idx].ARE = ARE_EXTERNAL;
-                    /* Add external reference */
-                    if (!add_external_reference(ext_refs, operand1, current_address + word_idx)) {
-                        return false;
-                    }
-                } else {
-                    code->words[word_idx].ARE = ARE_RELOCATABLE;
-                }
-
                 word_idx++;
-                break;
-
-            case ADDR_RELATIVE:
-                /* Skip the '&' character */
-                strncpy(symbol_name, operand1 + 1, MAX_LABEL_LENGTH - 1);
-                symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
-
-                /* Look up symbol in the symbol table */
-                symbol = find_symbol(symbols, symbol_name);
-                if (!symbol) {
-                    report_error("second_pass", 0, "Undefined symbol: %s", symbol_name);
+            }
+        }
+        /* Single operand instruction */
+        else if (operand1 && !is_two_operand_instruction(op_code)) {
+            if (dst_addr != ADDR_REGISTER) {
+                if (!encode_operand_word(&code->words[word_idx], operand1, dst_addr, symbols,
+                                      current_address, word_idx, ext_refs, context)) {
                     return false;
                 }
-
-                /* Calculate the distance (target address - current address) */
-                address = symbol->value;
-                target_dist = address - (current_address + word_idx);
-
-                /* Encode the relative distance */
-                code->words[word_idx].value = target_dist;
-                code->words[word_idx].ARE = ARE_RELOCATABLE;
                 word_idx++;
-                break;
-
-            case ADDR_REGISTER:
-                /* Register addressing is handled in the first word */
-                break;
+            }
         }
     }
 
@@ -413,29 +223,32 @@ bool encode_instruction(parsed_line_t *line, symbol_table_t *symbols,
     return true;
 }
 
-/* Process an entry directive */
-bool process_entry_second_pass(parsed_line_t *line, symbol_table_t *symbols) {
+/* Process an entry directive in second pass */
+bool process_entry_second_pass(parsed_line_t *line, symbol_table_t *symbols, error_context_t *context) {
     const char *symbol_name = line->operands[0];
     symbol_t *symbol;
+
+    /* Set current line number in error context */
+    if (context) {
+        context->line_number = line->line_number;
+    }
 
     /* Look up the symbol in the symbol table */
     symbol = find_symbol(symbols, symbol_name);
     if (!symbol) {
-        report_error("second_pass", line->line_number, "Entry symbol '%s' not defined", symbol_name);
+        report_context_error(context, "Entry symbol '%s' not defined", symbol_name);
         return false;
     }
 
     /* Check if the symbol is already defined as external */
-    if (symbol->type == SYMBOL_EXTERNAL) {
-        report_error("second_pass", line->line_number,
-            "Symbol '%s' cannot be both external and entry", symbol_name);
+    if (symbol_has_attribute(symbol, SYMBOL_ATTR_EXTERNAL)) {
+        report_context_error(context, "Symbol '%s' cannot be both external and entry", symbol_name);
         return false;
     }
 
     /* Mark the symbol as an entry */
-    if (!add_symbol_attribute(symbols, symbol_name, SYMBOL_ENTRY)) {
-        report_error("second_pass", line->line_number,
-            "Failed to mark symbol '%s' as entry", symbol_name);
+    if (!add_symbol_attributes(symbols, symbol_name, SYMBOL_ATTR_ENTRY)) {
+        report_context_error(context, "Failed to mark symbol '%s' as entry", symbol_name);
         return false;
     }
 
@@ -443,13 +256,19 @@ bool process_entry_second_pass(parsed_line_t *line, symbol_table_t *symbols) {
 }
 
 /* Add an external reference */
-bool add_external_reference(external_reference_t **ext_refs, const char *name, int address) {
+bool add_external_reference(external_reference_t **ext_refs, const char *name, int address, error_context_t *context) {
     external_reference_t *new_ref, *current;
+
+    /* Validate parameters */
+    if (!ext_refs || !name) {
+        report_context_error(context, "Invalid parameters for add_external_reference");
+        return false;
+    }
 
     /* Allocate memory for the new reference */
     new_ref = (external_reference_t *)malloc(sizeof(external_reference_t));
     if (!new_ref) {
-        report_error("second_pass", 0, "Memory allocation error for external reference");
+        report_context_error(context, "Memory allocation error for external reference");
         return false;
     }
 
@@ -488,7 +307,8 @@ void free_external_references(external_reference_t *ext_refs) {
 /* Main function for the second pass */
 bool second_pass(const char *filename, symbol_table_t *symbols,
                 machine_word_t **code_image, machine_word_t **data_image,
-                external_reference_t **ext_refs, int *ICF, int *DCF) {
+                external_reference_t **ext_refs, int *ICF, int *DCF,
+                error_context_t *context) {
     FILE *file;
     char base_filename[MAX_FILENAME_LENGTH];
     char am_filename[MAX_FILENAME_LENGTH];
@@ -499,6 +319,13 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
     bool success = true;
     instruction_code_t code;
 
+    /* Initialize/update error context */
+    if (context) {
+        strncpy(context->filename, filename, MAX_FILENAME_LENGTH - 1);
+        context->filename[MAX_FILENAME_LENGTH - 1] = '\0';
+        context->line_number = 0;
+    }
+
     /* Build the .am filename */
     get_base_filename(filename, base_filename);
     create_filename(base_filename, EXT_MACRO, am_filename);
@@ -506,14 +333,14 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
     /* Open the file */
     file = fopen(am_filename, "r");
     if (!file) {
-        report_error("second_pass", 0, "Could not open file: %s", am_filename);
+        report_context_error(context, "Could not open file: %s", am_filename);
         return false;
     }
 
     /* Allocate memory for code image */
     *code_image = (machine_word_t *)calloc(MEMORY_START + 1000, sizeof(machine_word_t));
     if (!*code_image) {
-        report_error("second_pass", 0, "Memory allocation error for code image");
+        report_context_error(context, "Memory allocation error for code image");
         fclose(file);
         return false;
     }
@@ -524,9 +351,12 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
     /* Second pass through the file */
     while (fgets(line_buf, MAX_LINE_LENGTH, file)) {
         line_number++;
+        if (context) {
+            context->line_number = line_number;
+        }
 
         /* Parse the line */
-        if (!parse_line(line_buf, &parsed_line, line_number)) {
+        if (!parse_line(line_buf, &parsed_line, line_number, context)) {
             success = false;
             continue;
         }
@@ -542,12 +372,12 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
             case INST_TYPE_STRING:
                 /* Data and string directives don't need processing in second pass */
                 DC += parsed_line.type == INST_TYPE_DATA ?
-                      parse_numbers_list(parsed_line.operands[0], NULL, 0) :
+                      parse_numbers_list(parsed_line.operands[0], NULL, 0, context) :
                       strlen(parsed_line.operands[0]) - 2 + 1; /* -2 for quotes, +1 for null */
                 break;
 
             case INST_TYPE_ENTRY:
-                if (!process_entry_second_pass(&parsed_line, symbols)) {
+                if (!process_entry_second_pass(&parsed_line, symbols, context)) {
                     success = false;
                 }
                 break;
@@ -558,7 +388,7 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
 
             case INST_TYPE_CODE:
                 /* Encode the instruction */
-                if (!encode_instruction(&parsed_line, symbols, &code, MEMORY_START + IC, ext_refs)) {
+                if (!encode_instruction(&parsed_line, symbols, &code, MEMORY_START + IC, ext_refs, context)) {
                     success = false;
                     continue;
                 }
@@ -572,7 +402,7 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
                 break;
 
             default:
-                report_error("second_pass", line_number, "Unknown instruction type");
+                report_context_error(context, "Unknown instruction type");
                 success = false;
                 break;
         }
@@ -583,7 +413,7 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
         /* Allocate memory for data image */
         *data_image = (machine_word_t *)calloc(DC + 1, sizeof(machine_word_t));
         if (!*data_image) {
-            report_error("second_pass", 0, "Memory allocation error for data image");
+            report_context_error(context, "Memory allocation error for data image");
             fclose(file);
             free(*code_image);
             *code_image = NULL;
@@ -593,7 +423,7 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
         }
 
         /* Encode the data */
-        if (!encode_data_image(data_image, &DC, am_filename)) {
+        if (!encode_data_image(data_image, &DC, am_filename, context)) {
             success = false;
         }
     }
@@ -608,7 +438,7 @@ bool second_pass(const char *filename, symbol_table_t *symbols,
 }
 
 /* Helper function to encode data image */
-static bool encode_data_image(machine_word_t **data_image, int *DCF, const char *filename) {
+static bool encode_data_image(machine_word_t **data_image, int *DCF, const char *filename, error_context_t *context) {
     FILE *file;
     char line_buf[MAX_LINE_LENGTH];
     parsed_line_t parsed_line;
@@ -616,22 +446,25 @@ static bool encode_data_image(machine_word_t **data_image, int *DCF, const char 
     int DC = 0;
     int i, count;
     int numbers[MAX_LINE_LENGTH];
-    char *str;
+    const char *str;
     int len;
 
     /* Open the file */
     file = fopen(filename, "r");
     if (!file) {
-        report_error("second_pass", 0, "Could not open file: %s", filename);
+        report_context_error(context, "Could not open file: %s", filename);
         return false;
     }
 
     /* Process the file */
     while (fgets(line_buf, MAX_LINE_LENGTH, file)) {
         line_number++;
+        if (context) {
+            context->line_number = line_number;
+        }
 
         /* Parse the line */
-        if (!parse_line(line_buf, &parsed_line, line_number)) {
+        if (!parse_line(line_buf, &parsed_line, line_number, context)) {
             continue;
         }
 
@@ -643,12 +476,12 @@ static bool encode_data_image(machine_word_t **data_image, int *DCF, const char 
         /* Process data and string directives */
         if (parsed_line.type == INST_TYPE_DATA) {
             /* Parse the data values */
-            count = parse_numbers_list(parsed_line.operands[0], numbers, MAX_LINE_LENGTH);
+            count = parse_numbers_list(parsed_line.operands[0], numbers, MAX_LINE_LENGTH, context);
             if (count > 0) {
                 /* Encode the data values */
                 for (i = 0; i < count; i++) {
                     (*data_image)[DC].value = numbers[i];
-                    (*data_image)[DC].ARE = ARE_ABSOLUTE;
+                    (*data_image)[DC].are = ARE_ABSOLUTE;
                     DC++;
                 }
             }
@@ -667,13 +500,13 @@ static bool encode_data_image(machine_word_t **data_image, int *DCF, const char 
                 /* Encode each character */
                 for (i = 0; i < len; i++) {
                     (*data_image)[DC].value = str[i];
-                    (*data_image)[DC].ARE = ARE_ABSOLUTE;
+                    (*data_image)[DC].are = ARE_ABSOLUTE;
                     DC++;
                 }
 
                 /* Add null terminator */
                 (*data_image)[DC].value = 0;
-                (*data_image)[DC].ARE = ARE_ABSOLUTE;
+                (*data_image)[DC].are = ARE_ABSOLUTE;
                 DC++;
             }
         }
@@ -683,18 +516,6 @@ static bool encode_data_image(machine_word_t **data_image, int *DCF, const char 
 
     /* Set final data counter */
     *DCF = DC;
-
-    return true;
-}
-
-/* Helper function to encode an address word */
-static bool encode_address_word(machine_word_t *word, int address, int are) {
-    if (!word) {
-        return false;
-    }
-
-    word->value = address;
-    word->ARE = are;
 
     return true;
 }
@@ -784,3 +605,82 @@ static bool is_two_operand_instruction(opcode_t opcode) {
            opcode == OP_ADD || opcode == OP_LEA;
 }
 
+/* Safe implementation of strtok_r for C90 compatibility */
+static char *safe_strtok_r(char *str, const char *delim, char **saveptr) {
+    char *token;
+
+    if (str == NULL) {
+        str = *saveptr;
+    }
+
+    /* Skip leading delimiters */
+    str += strspn(str, delim);
+    if (*str == '\0') {
+        *saveptr = str;
+        return NULL;
+    }
+
+    /* Find the end of the token */
+    token = str;
+    str = strpbrk(str, delim);
+    if (str == NULL) {
+        /* This token finishes the string */
+        *saveptr = strchr(token, '\0');
+    } else {
+        /* Terminate the token and make saveptr point to the rest of the string */
+        *str = '\0';
+        *saveptr = str + 1;
+    }
+
+    return token;
+}
+
+/* Helper function to parse a list of comma-separated numbers */
+static int parse_numbers_list(const char *str, int numbers[], int max_count, error_context_t *context) {
+    char str_copy[MAX_LINE_LENGTH];
+    char *token;
+    char *saveptr = NULL;
+    int count = 0;
+
+    /* Check for NULL pointer */
+    if (!str) {
+        report_context_error(context, "No numbers provided");
+        return 0;
+    }
+
+    /* Copy the string for tokenization */
+    strncpy(str_copy, str, MAX_LINE_LENGTH - 1);
+    str_copy[MAX_LINE_LENGTH - 1] = '\0';
+
+    /* Get the first token */
+    token = safe_strtok_r(str_copy, ",", &saveptr);
+
+    /* Parse each token */
+    while (token && (max_count == 0 || count < max_count)) {
+        /* Trim whitespace */
+        token = trim(token);
+
+        /* Check if the token is a valid integer */
+        if (!is_integer(token)) {
+            report_context_error(context, "Invalid number format: %s", token);
+            return -1;
+        }
+
+        /* Convert to integer and store */
+        if (numbers) {
+            numbers[count] = string_to_int(token);
+        }
+        count++;
+
+        /* Get next token */
+        token = safe_strtok_r(NULL, ",", &saveptr);
+    }
+
+    /* Check if we have more tokens (too many numbers) */
+    if (token && max_count > 0 && count >= max_count) {
+        report_context_error(context, "Too many numbers in list");
+        return -1;
+    }
+
+    return count;
+}

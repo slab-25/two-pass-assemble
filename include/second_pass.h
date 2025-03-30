@@ -10,14 +10,7 @@
 #include "symbol_table.h"
 #include "first_pass.h"
 #include "error.h"
-
-/**
- * @brief Machine word structure
- */
-typedef struct {
-    unsigned int value: 21;  /* 21-bit value */
-    unsigned int ARE: 3;     /* A=1 if absolute, R=1 if relocatable, E=1 if external */
-} machine_word_t;
+#include "machine_word.h"
 
 /**
  * @brief Instruction code structure
@@ -60,19 +53,6 @@ bool encode_operand_word(machine_word_t *word, const char *operand,
                          symbol_table_t *symbols, int current_address,
                          int word_offset, external_reference_t **ext_refs,
                          error_context_t *context);
-
-/**
- * @brief Encode the first word of an instruction
- * @param opcode The operation code
- * @param src_addr The source addressing method
- * @param src_reg The source register number (if applicable)
- * @param dst_addr The destination addressing method
- * @param dst_reg The destination register number (if applicable)
- * @param funct The function code (if applicable)
- * @return The encoded first word
- */
-machine_word_t encode_first_word(const char *opcode, addressing_method_t src_addr,
-                                int src_reg, addressing_method_t dst_addr, int dst_reg);
 
 /**
  * @brief Encode a machine instruction

@@ -9,33 +9,44 @@
 #include "../include/output.h"
 #include "../include/utils.h"
 
+/* Base64-like character set for encoding machine words */
+static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
 /* Helper function to convert a machine word to a base64-like representation */
 static void word_to_base64(machine_word_t word, char *base64);
 
 /* Generate the output files */
 bool generate_output_files(const char *filename, symbol_table_t *symbols,
                          machine_word_t *code_image, machine_word_t *data_image,
-                         external_reference_t *ext_refs, int ICF, int DCF) {
+                         external_reference_t *ext_refs, int ICF, int DCF,
+                         error_context_t *context) {
     bool success = true;
 
+    /* Initialize/update error context */
+    if (context) {
+        strncpy(context->filename, filename, MAX_FILENAME_LENGTH - 1);
+        context->filename[MAX_FILENAME_LENGTH - 1] = '\0';
+        context->line_number = 0;
+    }
+
     /* Write the object file */
-    if (!write_object_file(filename, code_image, data_image, ICF, DCF)) {
-        report_error("output", 0, "Failed to write object file");
+    if (!write_object_file(filename, code_image, data_image, ICF, DCF, context)) {
+        report_context_error(context, "Failed to write object file");
         success = false;
     }
 
     /* Write the entries file (only if there are entries) */
     if (success && has_entries(symbols)) {
-        if (!write_entries_file(filename, symbols)) {
-            report_error("output", 0, "Failed to write entries file");
+        if (!write_entries_file(filename, symbols, context)) {
+            report_context_error(context, "Failed to write entries file");
             success = false;
         }
     }
 
     /* Write the externals file (only if there are external references) */
     if (success && ext_refs) {
-        if (!write_externals_file(filename, ext_refs)) {
-            report_error("output", 0, "Failed to write externals file");
+        if (!write_externals_file(filename, ext_refs, context)) {
+            report_context_error(context, "Failed to write externals file");
             success = false;
         }
     }
@@ -45,7 +56,8 @@ bool generate_output_files(const char *filename, symbol_table_t *symbols,
 
 /* Write the object file */
 bool write_object_file(const char *filename, machine_word_t *code_image,
-                      machine_word_t *data_image, int ICF, int DCF) {
+                      machine_word_t *data_image, int ICF, int DCF,
+                      error_context_t *context) {
     FILE *ob_file;
     char base_filename[MAX_FILENAME_LENGTH];
     char ob_filename[MAX_FILENAME_LENGTH];
@@ -59,7 +71,7 @@ bool write_object_file(const char *filename, machine_word_t *code_image,
     /* Open the file */
     ob_file = fopen(ob_filename, "w");
     if (!ob_file) {
-        report_error("output", 0, "Could not open file: %s", ob_filename);
+        report_context_error(context, "Could not open file: %s", ob_filename);
         return false;
     }
 
@@ -89,7 +101,8 @@ bool write_object_file(const char *filename, machine_word_t *code_image,
 }
 
 /* Write the entries file */
-bool write_entries_file(const char *filename, symbol_table_t *symbols) {
+bool write_entries_file(const char *filename, symbol_table_t *symbols,
+                       error_context_t *context) {
     FILE *ent_file;
     char base_filename[MAX_FILENAME_LENGTH];
     char ent_filename[MAX_FILENAME_LENGTH];
@@ -102,14 +115,14 @@ bool write_entries_file(const char *filename, symbol_table_t *symbols) {
     /* Open the file */
     ent_file = fopen(ent_filename, "w");
     if (!ent_file) {
-        report_error("output", 0, "Could not open file: %s", ent_filename);
+        report_context_error(context, "Could not open file: %s", ent_filename);
         return false;
     }
 
     /* Iterate through the symbol table and write entries */
     symbol = symbols->head;
     while (symbol) {
-        if (symbol->type == SYMBOL_ENTRY) {
+        if (symbol_has_attribute(symbol, SYMBOL_ATTR_ENTRY)) {
             fprintf(ent_file, "%s %04d\n", symbol->name, symbol->value);
         }
         symbol = symbol->next;
@@ -120,7 +133,8 @@ bool write_entries_file(const char *filename, symbol_table_t *symbols) {
 }
 
 /* Write the externals file */
-bool write_externals_file(const char *filename, external_reference_t *ext_refs) {
+bool write_externals_file(const char *filename, external_reference_t *ext_refs,
+                         error_context_t *context) {
     FILE *ext_file;
     char base_filename[MAX_FILENAME_LENGTH];
     char ext_filename[MAX_FILENAME_LENGTH];
@@ -133,7 +147,7 @@ bool write_externals_file(const char *filename, external_reference_t *ext_refs) 
     /* Open the file */
     ext_file = fopen(ext_filename, "w");
     if (!ext_file) {
-        report_error("output", 0, "Could not open file: %s", ext_filename);
+        report_context_error(context, "Could not open file: %s", ext_filename);
         return false;
     }
 
@@ -158,7 +172,7 @@ bool has_entries(symbol_table_t *symbols) {
 
     symbol = symbols->head;
     while (symbol) {
-        if (symbol->type == SYMBOL_ENTRY) {
+        if (symbol_has_attribute(symbol, SYMBOL_ATTR_ENTRY)) {
             return true;
         }
         symbol = symbol->next;
@@ -168,18 +182,19 @@ bool has_entries(symbol_table_t *symbols) {
 }
 
 /* Helper function to convert a machine word to a base64-like representation
- * The 24-bit word is converted to two base64 characters (6 bits each)
- * for the upper 12 bits and then the lower 12 bits.
+ * The 24-bit word is converted to four base64 characters (6 bits each)
  */
 static void word_to_base64(machine_word_t word, char *base64) {
-    static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    unsigned int value = (word.value << 3) | word.ARE;
+    unsigned int combined_value;
     int i;
+
+    /* Combine the value and ARE bits */
+    combined_value = (word.value << 3) | word.are;
 
     /* Extract 6-bit segments and convert to base64 */
     for (i = 0; i < 2; i++) {
         /* Extract 6 bits, starting from most significant bits */
-        int index = (value >> (18 - i * 6)) & 0x3F;
+        int index = (combined_value >> (12 - i * 6)) & 0x3F;
         base64[i] = base64_chars[index];
     }
     base64[2] = '\0';
