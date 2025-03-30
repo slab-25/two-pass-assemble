@@ -10,38 +10,48 @@
 #include "../include/first_pass.h"
 #include "../include/utils.h"
 
-/* Custom implementation of strtok_r for C90 compliance */
-static char* my_strtok(char* str, const char* delim, char** saveptr) {
-    char* token;
+/* Forward declarations for internal functions */
+static bool process_label(const char *label, symbol_table_t *symbols, int address, symbol_type_t type);
+static instruction_type_t get_directive_type(const char *directive);
+static int parse_numbers_list(const char *str, int numbers[], int max_count);
 
-    if (str != NULL) {
-        *saveptr = str;
+#ifndef HAVE_STRTOK_R
+/**
+ * @brief Safe implementation of strtok_r for C90 compatibility
+ * @param str String to tokenize
+ * @param delim Delimiter string
+ * @param saveptr Pointer to save context between calls
+ * @return Next token or NULL if no more tokens
+ */
+static char *strtok_r(char *str, const char *delim, char **saveptr) {
+    char *token;
+
+    if (str == NULL) {
+        str = *saveptr;
     }
 
-    token = *saveptr;
-
     /* Skip leading delimiters */
-    token += strspn(token, delim);
-
-    if (*token == '\0') {
+    str += strspn(str, delim);
+    if (*str == '\0') {
+        *saveptr = str;
         return NULL;
     }
 
     /* Find the end of the token */
-    *saveptr = token + strcspn(token, delim);
-
-    if (**saveptr != '\0') {
-        *(*saveptr)++ = '\0';
+    token = str;
+    str = strpbrk(str, delim);
+    if (str == NULL) {
+        /* This token finishes the string */
+        *saveptr = strchr(token, '\0');
+    } else {
+        /* Terminate the token and make saveptr point to the rest of the string */
+        *str = '\0';
+        *saveptr = str + 1;
     }
 
     return token;
 }
-
-/* Forward declarations for internal functions */
-static bool process_label(const char *label, symbol_table_t *symbols, int address, symbol_type_t type);
-static bool is_directive(const char *token);
-static instruction_type_t get_directive_type(const char *directive);
-static int parse_numbers_list(const char *str, int numbers[], int max_count);
+#endif
 
 /* Parse a line into its components */
 bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
@@ -50,7 +60,11 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
     char *next_token;
     char *context = NULL;
     int i;
-    char *comment_pos;
+
+    /* Validate parameters */
+    if (!line || !parsed) {
+        return false;
+    }
 
     /* Initialize the parsed structure */
     memset(parsed, 0, sizeof(parsed_line_t));
@@ -58,7 +72,7 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
     parsed->type = INST_TYPE_INVALID;
 
     /* Check for empty line or comment */
-    if (!line || !*line || line[0] == ';') {
+    if (!*line || line[0] == ';') {
         return true;
     }
 
@@ -67,25 +81,37 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
     line_copy[MAX_LINE_LENGTH - 1] = '\0';
 
     /* Remove comments */
-    comment_pos = strchr(line_copy, ';');
-    if (comment_pos) {
-        *comment_pos = '\0';
+    token = strchr(line_copy, ';');
+    if (token) {
+        *token = '\0';
     }
 
     /* Trim whitespace */
-    trim(line_copy);
-    if (!*line_copy) {
-        return true; /* Empty line after trimming */
+    token = trim(line_copy);
+
+    /* If the line is empty after trimming, return */
+    if (!token || !*token) {
+        return true;
+    }
+
+    /* Move trimmed line to beginning of buffer if necessary */
+    if (token != line_copy) {
+        memmove(line_copy, token, strlen(token) + 1);
     }
 
     /* Get the first token */
-    token = my_strtok(line_copy, " \t", &context);
+    token = strtok_r(line_copy, " \t", &context);
     if (!token) {
         return true; /* Empty line */
     }
 
     /* Check if the first token is a label */
     if (token[strlen(token) - 1] == ':') {
+        if (strlen(token) <= 1) {
+            report_error("first_pass", line_number, "Invalid label name (empty)");
+            return false;
+        }
+
         token[strlen(token) - 1] = '\0';
 
         /* Validate the label */
@@ -99,7 +125,7 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
         parsed->label[MAX_LABEL_LENGTH - 1] = '\0';
 
         /* Get the next token */
-        token = my_strtok(NULL, " \t", &context);
+        token = strtok_r(NULL, " \t", &context);
         if (!token) {
             report_error("first_pass", line_number, "Label defined without instruction or directive");
             return false;
@@ -119,33 +145,39 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
         /* For data and string directives, we need the operand(s) */
         if (parsed->type == INST_TYPE_DATA) {
             /* Get the rest of the line for data values */
-            token = my_strtok(NULL, "", &context);
+            token = strtok_r(NULL, "", &context);
             if (!token) {
                 report_error("first_pass", line_number, "No data values specified for .data directive");
                 return false;
             }
 
             /* Store the operand */
-            strncpy(parsed->operands[0], token, MAX_OPERAND_LENGTH - 1);
-            parsed->operands[0][MAX_OPERAND_LENGTH - 1] = '\0';
-            parsed->operand_count = 1;
+            token = trim(token);
+            if (token) {
+                strncpy(parsed->operands[0], token, MAX_OPERAND_LENGTH - 1);
+                parsed->operands[0][MAX_OPERAND_LENGTH - 1] = '\0';
+                parsed->operand_count = 1;
+            }
         }
         else if (parsed->type == INST_TYPE_STRING) {
             /* Get the string operand */
-            token = my_strtok(NULL, "", &context);
+            token = strtok_r(NULL, "", &context);
             if (!token) {
                 report_error("first_pass", line_number, "No string specified for .string directive");
                 return false;
             }
 
             /* Store the operand */
-            strncpy(parsed->operands[0], token, MAX_OPERAND_LENGTH - 1);
-            parsed->operands[0][MAX_OPERAND_LENGTH - 1] = '\0';
-            parsed->operand_count = 1;
+            token = trim(token);
+            if (token) {
+                strncpy(parsed->operands[0], token, MAX_OPERAND_LENGTH - 1);
+                parsed->operands[0][MAX_OPERAND_LENGTH - 1] = '\0';
+                parsed->operand_count = 1;
+            }
         }
         else if (parsed->type == INST_TYPE_ENTRY || parsed->type == INST_TYPE_EXTERN) {
             /* Get the symbol name */
-            token = my_strtok(NULL, " \t", &context);
+            token = strtok_r(NULL, " \t", &context);
             if (!token) {
                 report_error("first_pass", line_number, "No symbol specified for %s directive",
                     parsed->type == INST_TYPE_ENTRY ? ".entry" : ".extern");
@@ -164,7 +196,7 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
             parsed->operand_count = 1;
 
             /* Check for extra tokens */
-            next_token = my_strtok(NULL, " \t", &context);
+            next_token = strtok_r(NULL, " \t", &context);
             if (next_token) {
                 report_error("first_pass", line_number, "Extra tokens after symbol in %s directive",
                     parsed->type == INST_TYPE_ENTRY ? ".entry" : ".extern");
@@ -181,20 +213,22 @@ bool parse_line(const char *line, parsed_line_t *parsed, int line_number) {
         parsed->opcode[MAX_OPCODE_LENGTH - 1] = '\0';
 
         /* Get operands */
-        token = my_strtok(NULL, ",", &context);
+        token = strtok_r(NULL, ",", &context);
         i = 0;
 
         while (token && i < MAX_OPERANDS) {
             /* Trim whitespace */
             token = trim(token);
 
-            /* Store the operand */
-            strncpy(parsed->operands[i], token, MAX_OPERAND_LENGTH - 1);
-            parsed->operands[i][MAX_OPERAND_LENGTH - 1] = '\0';
-            i++;
+            /* Store non-empty operand */
+            if (token && *token) {
+                strncpy(parsed->operands[i], token, MAX_OPERAND_LENGTH - 1);
+                parsed->operands[i][MAX_OPERAND_LENGTH - 1] = '\0';
+                i++;
+            }
 
             /* Get next operand */
-            token = my_strtok(NULL, ",", &context);
+            token = strtok_r(NULL, ",", &context);
         }
 
         parsed->operand_count = i;
@@ -571,11 +605,6 @@ static bool process_label(const char *label, symbol_table_t *symbols, int addres
     return true;
 }
 
-/* Helper function to check if a token is a directive */
-static bool is_directive(const char *token) {
-    return token && token[0] == '.';
-}
-
 /* Helper function to get the directive type */
 static instruction_type_t get_directive_type(const char *directive) {
     if (strcmp(directive, ".data") == 0) {
@@ -600,12 +629,17 @@ static int parse_numbers_list(const char *str, int numbers[], int max_count) {
     char *context = NULL;
     int count = 0;
 
+    /* Check for NULL pointer */
+    if (!str) {
+        return 0;
+    }
+
     /* Copy the string for tokenization */
     strncpy(str_copy, str, MAX_LINE_LENGTH - 1);
     str_copy[MAX_LINE_LENGTH - 1] = '\0';
 
     /* Get the first token */
-    token = my_strtok(str_copy, ",", &context);
+    token = strtok_r(str_copy, ",", &context);
 
     /* Parse each token */
     while (token && count < max_count) {
@@ -623,8 +657,8 @@ static int parse_numbers_list(const char *str, int numbers[], int max_count) {
         }
         count++;
 
-        /* Get the next token */
-        token = my_strtok(NULL, ",", &context);
+        /* Get next token */
+        token = strtok_r(NULL, ",", &context);
     }
 
     return count;

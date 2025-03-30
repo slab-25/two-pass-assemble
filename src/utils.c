@@ -23,8 +23,16 @@ void report_error(const char *filename, int line_number, const char *format, ...
     fprintf(stderr, "\n");
 }
 
+/*
+ * Verify the trim function in utils.c
+ * It should look something like this:
+ */
 char* trim(char *str) {
     char *end;
+
+    /* Check for NULL pointer */
+    if (!str)
+        return NULL;
 
     /* Skip leading whitespace */
     while (isspace((unsigned char)*str)) {
