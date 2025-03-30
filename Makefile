@@ -5,6 +5,7 @@ CC = gcc
 CFLAGS = -std=c90 -Wall -Wextra -pedantic
 DEBUG = -g
 
+
 # Directories
 SRC_DIR = src
 INCLUDE_DIR = include
