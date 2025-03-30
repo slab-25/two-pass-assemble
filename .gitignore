@@ -1,0 +1,23 @@
+# Compiled object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Executables
+assembler
+*.exe
+*.out
+
+# Debug files
+*.dSYM/
+
+# Generated files
+*.am
+*.ob
+*.ent
+*.ext
+
+# IDE files
+.vscode/
+.idea/
