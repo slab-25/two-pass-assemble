@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  assembler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: two_pass_assembler
+    volumes:
+      - ./:/project
+    working_dir: /project
+    tty: true
+    stdin_open: true
+    command: tail -f /dev/null  # Keeps container alive for dev/debug
