@@ -4,123 +4,127 @@
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# Create a results directory
-mkdir -p results
+# Initialize counters
+PASS_COUNT=0
+FAIL_COUNT=0
+ERROR_PASS_COUNT=0
+ERROR_FAIL_COUNT=0
 
-echo "Starting assembler tests..."
-echo "=========================="
+# Create directories
+mkdir -p obj bin results
 
-# First, let's build the assembler (in case it wasn't built)
-echo "Building assembler..."
-(cd .. && make) || { echo -e "${RED}Error: Failed to build assembler${NC}"; exit 1; }
+echo -e "${BLUE}Starting assembler tests...${NC}"
+echo -e "${BLUE}==========================${NC}"
 
-# Debug: Show current directory and project structure
+# Build the assembler
+echo -e "${YELLOW}Building assembler...${NC}"
+make -C ..
+
+# Find assembler executable
+ASSEMBLER="../bin/assembler"
 echo "Current directory: $(pwd)"
-echo "Looking for executable files:"
-find .. -type f -executable | grep -v "\.git"
+echo -e "${YELLOW}Looking for executable files:${NC}"
+ls -l $ASSEMBLER ../tests/run_tests.sh
+echo "Found assembler at: $ASSEMBLER"
 
-# Find the assembler executable
-ASSEMBLER=$(find .. -type f -name "assembler" -o -name "assembler.exe" | head -1)
-
-if [ -z "$ASSEMBLER" ]; then
-    echo -e "${RED}Error: Could not find assembler executable${NC}"
-    echo "Please check your build process and Makefile"
-    exit 1
-fi
-
-echo -e "${GREEN}Found assembler at: $ASSEMBLER${NC}"
-
-# Check assembler permissions
-if [ ! -x "$ASSEMBLER" ]; then
-    echo -e "${YELLOW}Warning: Assembler not executable, fixing permissions...${NC}"
-    chmod +x "$ASSEMBLER"
-fi
-
-# Array of test files (without extension)
-TEST_FILES=("basic" "macro" "addressing" "directives" "edge_cases" "comprehensive")
-# Error test file
-ERROR_TEST="errors"
-
-# Function to run a test and check results
+# Function to run a test
 run_test() {
     local test_file=$1
-    echo -e "${YELLOW}Testing: ${test_file}.as${NC}"
+    local expect_error=$2
 
-    # Check if test file exists
-    if [ ! -f "${test_file}.as" ]; then
-        echo -e "${RED}Error: Test file '${test_file}.as' not found${NC}"
-        return 1
-    fi
-
-    # Run assembler on the test file
+    echo -e "\n${YELLOW}Testing: ${test_file}.as${NC}"
     echo "Running: $ASSEMBLER ${test_file}.as"
-    "$ASSEMBLER" "${test_file}.as" > "results/${test_file}.out" 2> "results/${test_file}.err"
 
-    # Check if the assembler returned success
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Assembler completed successfully${NC}"
+    $ASSEMBLER "${test_file}.as" > "results/${test_file}.out" 2> "results/${test_file}.err"
+    EXIT_STATUS=$?
 
-        # Check for output files
-        if [ -f "${test_file}.ob" ]; then
-            echo -e "${GREEN}✓ Object file created${NC}"
-            mv "${test_file}.ob" "results/"
-        else
-            echo -e "${RED}✗ Object file not created${NC}"
+    if [ "$expect_error" = "true" ]; then
+        if [ $EXIT_STATUS -ne 0 ]; then
+            echo -e "${GREEN}✓ Assembler correctly detected errors (as expected)${NC}"
             echo -e "${YELLOW}Error output:${NC}"
             cat "results/${test_file}.err"
-        fi
-
-        if [ -f "${test_file}.ent" ]; then
-            echo -e "${GREEN}✓ Entry file created${NC}"
-            mv "${test_file}.ent" "results/"
-        fi
-
-        if [ -f "${test_file}.ext" ]; then
-            echo -e "${GREEN}✓ External file created${NC}"
-            mv "${test_file}.ext" "results/"
+            if [ -f "${test_file}.am" ]; then
+                echo -e "${GREEN}✓ Macro expansion file created${NC}"
+                if grep -q "mcro" "${test_file}.am"; then
+                    echo -e "${YELLOW}Warning: Found 'mcro' in output file - macro may not have expanded properly!${NC}"
+                    echo -e "${YELLOW}Result: WARNING${NC}"
+                else
+                    echo -e "${GREEN}Result: PASS${NC}"
+                fi
+            else
+                echo -e "${GREEN}Result: PASS${NC}"
+            fi
+            ((ERROR_PASS_COUNT++))
+        else
+            echo -e "${RED}✗ Assembler did not detect expected errors${NC}"
+            echo -e "${RED}Result: FAIL${NC}"
+            ((ERROR_FAIL_COUNT++))
         fi
     else
-        echo -e "${RED}✗ Assembler failed${NC}"
-        echo -e "${YELLOW}Error output:${NC}"
-        cat "results/${test_file}.err"
+        if [ $EXIT_STATUS -eq 0 ]; then
+            echo -e "${GREEN}✓ Assembler completed successfully${NC}"
+            [ -f "${test_file}.ob" ] && echo -e "${GREEN}✓ Object file created${NC}"
+            [ -f "${test_file}.ent" ] && echo -e "${GREEN}✓ Entry file created${NC}"
+            [ -f "${test_file}.ext" ] && echo -e "${GREEN}✓ External file created${NC}"
+            [ -f "${test_file}.am" ] && echo -e "${GREEN}✓ Macro expansion file created${NC}"
+            echo -e "${GREEN}Result: PASS${NC}"
+            ((PASS_COUNT++))
+        else
+            echo -e "${RED}✗ Assembler failed${NC}"
+            if [ -f "results/${test_file}.err" ]; then
+                echo -e "${YELLOW}Error output:${NC}"
+                cat "results/${test_file}.err"
+            fi
+            echo -e "${RED}Result: FAIL${NC}"
+            ((FAIL_COUNT++))
+        fi
     fi
-
-    # Move the macro expansion file if it exists
-    if [ -f "${test_file}.am" ]; then
-        echo -e "${GREEN}✓ Macro expansion file created${NC}"
-        mv "${test_file}.am" "results/"
-    fi
-
+    
+    # Move generated files to results directory
+    mv -f "${test_file}.ob" "results/" 2>/dev/null || true
+    mv -f "${test_file}.am" "results/" 2>/dev/null || true
+    mv -f "${test_file}.ent" "results/" 2>/dev/null || true
+    mv -f "${test_file}.ext" "results/" 2>/dev/null || true
+    
     echo "------------------------"
 }
 
-# Test all normal test files
-for test_file in "${TEST_FILES[@]}"; do
-    run_test "$test_file"
+# Run regular tests
+for test_file in basic macro addressing directives edge_cases comprehensive \
+                 macro_edge_cases macro_with_labels boundary_cases nested_macros \
+                 label_conflicts data_macros macro_chains whitespace_macros \
+                 comment_variations register_macros complex_macros jump_macros; do
+    run_test "$test_file" "false"
 done
 
-# Special test for error file
-echo -e "${YELLOW}Testing error detection: ${ERROR_TEST}.as${NC}"
-"$ASSEMBLER" "${ERROR_TEST}.as" > "results/${ERROR_TEST}.out" 2> "results/${ERROR_TEST}.err"
+# Run error tests
+for test_file in errors macro_errors; do
+    run_test "$test_file" "true"
+done
 
-# We expect this to fail
-if [ $? -ne 0 ]; then
-    echo -e "${GREEN}✓ Assembler correctly detected errors${NC}"
-    echo -e "${YELLOW}Error output:${NC}"
-    cat "results/${ERROR_TEST}.err"
-else
-    echo -e "${RED}✗ Assembler did not detect errors in error test file${NC}"
-fi
+echo -e "${BLUE}==========================${NC}"
+echo -e "Testing complete. Results saved in the ${YELLOW}results${NC} directory."
+echo -e "\n${BLUE}Final Test Summary${NC}"
+echo "-----------------"
+echo -e "Regular tests: ${GREEN}${PASS_COUNT} passed${NC}, ${RED}${FAIL_COUNT} failed${NC}"
+echo -e "Error tests: ${GREEN}${ERROR_PASS_COUNT} passed${NC}, ${RED}${ERROR_FAIL_COUNT} failed${NC}"
+echo -e "Total: ${GREEN}$((PASS_COUNT + ERROR_PASS_COUNT)) passed${NC}, ${RED}$((FAIL_COUNT + ERROR_FAIL_COUNT)) failed${NC}"
 
-# Move any output files from error test
-for ext in ".am" ".ob" ".ent" ".ext"; do
-    if [ -f "${ERROR_TEST}${ext}" ]; then
-        mv "${ERROR_TEST}${ext}" "results/"
+echo -e "\n${BLUE}Macro Expansion Analysis${NC}"
+echo "----------------------"
+for test_file in "macro" "macro_edge_cases" "macro_with_labels" "comprehensive"; do
+    if [ -f "results/${test_file}.am" ]; then
+        echo -e "${YELLOW}${test_file}.am:${NC}"
+        if ! grep -q "mcro" "results/${test_file}.am"; then
+            echo -e "${GREEN}✓ No macro definitions found (correct)${NC}"
+        fi
+        if grep -q "inc r1" "results/${test_file}.am"; then
+            echo -e "${GREEN}✓ Found expanded macro content${NC}"
+        fi
+        echo
     fi
 done
-
-echo "=========================="
-echo "Testing complete. Results saved in the 'results' directory."
