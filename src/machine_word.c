@@ -7,26 +7,48 @@
 #include <string.h>
 #include "../include/machine_word.h"
 
-/* Bit field positions in 24-bit machine word */
-#define OPCODE_SHIFT 18  /* 18-21 */
-#define OPCODE_MASK 0x0F /* 15 */
 
-#define SRC_ADDR_SHIFT 16 /* 16-17 */
-#define SRC_ADDR_MASK 0x03 /* 3 */
+/**
+ * Bit field positions and masks for the 24-bit machine word format:
+ *
+ * Layout (MSB to LSB):
+ * |23 22|21 20 19 18|17 16|15 14 13|12 11|10 9 8|7 6 5 4|3 2 1 0|
+ * |-----|-----------|-----|---------|-----|-------|--------|-------|
+ * |  -  |  OPCODE   | SRC | SRC-REG | DST |DST-REG| FUNCT  | ARE  |
+ * |     |  (4 bits) | ADDR|(3 bits) | ADDR|(3 bits|(4 bits)|(3 bits|
+ * |     |           |MODE |         | MODE|       |        |       |
+ * |     |           |2 bit|         |2 bit|       |        |       |
+ */
 
-#define SRC_REG_SHIFT 13 /* 13-15 */
-#define SRC_REG_MASK 0x07 /* 7 */
+/* Bits 18-21: Operation code (15 possible values) */
+#define OPCODE_SHIFT 18
+#define OPCODE_MASK 0x0F
 
-#define DST_ADDR_SHIFT 11 /* 11-12 */
-#define DST_ADDR_MASK 0x03 /* 3 */
+/* Bits 16-17: Source addressing mode (4 possible modes) */
+#define SRC_ADDR_SHIFT 16
+#define SRC_ADDR_MASK 0x03
 
-#define DST_REG_SHIFT 8 /* 8-10 */
-#define DST_REG_MASK 0x07 /* 7 */
+/* Bits 13-15: Source register number (8 possible registers) */
+#define SRC_REG_SHIFT 13
+#define SRC_REG_MASK 0x07
 
-#define FUNCT_SHIFT 3 /* 3-6 */
-#define FUNCT_MASK 0x0F /* 15 */
+/* Bits 11-12: Destination addressing mode (4 possible modes) */
+#define DST_ADDR_SHIFT 11
+#define DST_ADDR_MASK 0x03
 
-#define ARE_MASK 0x07 /* 0-2 */
+/* Bits 8-10: Destination register number (8 possible registers) */
+#define DST_REG_SHIFT 8
+#define DST_REG_MASK 0x07
+
+/* Bits 3-6: Function code (16 possible values) */
+#define FUNCT_SHIFT 3
+#define FUNCT_MASK 0x0F
+
+/* Bits 0-2: ARE flags (Absolute/Relocatable/External) */
+#define ARE_MASK 0x07
+
+
+
 /* Initialize a machine word */
 void word_init(machine_word_t *word, unsigned int value, are_type_t are) {
     if (!word) {
