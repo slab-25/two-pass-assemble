@@ -8,26 +8,25 @@
 #include "../include/machine_word.h"
 
 /* Bit field positions in 24-bit machine word */
-#define OPCODE_SHIFT 18
-#define OPCODE_MASK 0x0F
+#define OPCODE_SHIFT 18  /* 18-21 */
+#define OPCODE_MASK 0x0F /* 15 */
 
-#define SRC_ADDR_SHIFT 16
-#define SRC_ADDR_MASK 0x03
+#define SRC_ADDR_SHIFT 16 /* 16-17 */
+#define SRC_ADDR_MASK 0x03 /* 3 */
 
-#define SRC_REG_SHIFT 13
-#define SRC_REG_MASK 0x07
+#define SRC_REG_SHIFT 13 /* 13-15 */
+#define SRC_REG_MASK 0x07 /* 7 */
 
-#define DST_ADDR_SHIFT 11
-#define DST_ADDR_MASK 0x03
+#define DST_ADDR_SHIFT 11 /* 11-12 */
+#define DST_ADDR_MASK 0x03 /* 3 */
 
-#define DST_REG_SHIFT 8
-#define DST_REG_MASK 0x07
+#define DST_REG_SHIFT 8 /* 8-10 */
+#define DST_REG_MASK 0x07 /* 7 */
 
-#define FUNCT_SHIFT 3
-#define FUNCT_MASK 0x0F
+#define FUNCT_SHIFT 3 /* 3-6 */
+#define FUNCT_MASK 0x0F /* 15 */
 
-#define ARE_MASK 0x07
-
+#define ARE_MASK 0x07 /* 0-2 */
 /* Initialize a machine word */
 void word_init(machine_word_t *word, unsigned int value, are_type_t are) {
     if (!word) {

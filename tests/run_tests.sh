@@ -41,7 +41,6 @@ fi
 
 # Array of test files (without extension)
 TEST_FILES=("basic" "macro" "addressing" "directives" "edge_cases" "comprehensive")
-
 # Error test file
 ERROR_TEST="errors"
 

@@ -58,6 +58,7 @@ bool add_macro(macro_table_t *table, const char *name, error_context_t *context)
         return false;
     }
     macro->line_count = 0;
+    macro->usage_count = 0;  /* Initialize usage count */
 
     /* Add the macro to the table */
     macro->next = table->head;
@@ -300,16 +301,16 @@ bool process_file(const char *filename, error_context_t *context) {
             write_line = false;
         }
         /* Check for macro definition end */
-        else if (token && strcmp(token, "endmcro") == 0) {
+        else if (token && strcmp(token, "mcroend") == 0) {
             if (macro_nesting_level == 0) {
-                report_context_error(context, "endmcro without matching mcro");
+                report_context_error(context, "mcroend without matching mcro");
                 success = false;
                 continue;
             }
 
             /* Check for extra tokens */
             if (safe_strtok_r(NULL, " \t", &saveptr)) {
-                report_context_error(context, "Extra tokens after endmcro");
+                report_context_error(context, "Extra tokens after mcroend");
                 success = false;
                 continue;
             }
@@ -339,6 +340,9 @@ bool process_file(const char *filename, error_context_t *context) {
                             fprintf(output, "%s\n", macro->lines[i]);
                         }
 
+                        /* Increment usage count */
+                        macro->usage_count++;
+
                         write_line = false;
                     }
                 }
@@ -351,6 +355,9 @@ bool process_file(const char *filename, error_context_t *context) {
                 for (i = 0; i < macro->line_count; i++) {
                     fprintf(output, "%s\n", macro->lines[i]);
                 }
+
+                /* Increment usage count */
+                macro->usage_count++;
 
                 write_line = false;
             }
@@ -376,6 +383,17 @@ bool process_file(const char *filename, error_context_t *context) {
     if (macro_nesting_level > 0) {
         report_context_error(context, "Macro definition not closed");
         success = false;
+    }
+
+    /* Print warning for unused macros */
+    if (success) {
+        macro_t *current = macro_table->head;
+        while (current) {
+            if (current->usage_count == 0) {
+                fprintf(stderr, "Warning: Macro '%s' defined but never used\n", current->name);
+            }
+            current = current->next;
+        }
     }
 
     /* Clean up */

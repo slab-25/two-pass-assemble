@@ -691,7 +691,7 @@ The assembler follows these main steps for processing each input file:
 - Expand macros
 - Generate the expanded source file (.am)
 
-2. **First Pass**:
+1. **First Pass**:
 
 - Parse each line
 - Build the symbol table

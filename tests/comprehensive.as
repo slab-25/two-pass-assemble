@@ -10,21 +10,21 @@
 ; Macro to print a value in register r1
 mcro print
 prn r1
-endmcro
+mcroend
 
 ; Macro to initialize registers
 mcro init
 mov r1, #0
 mov r2, #0
 mov r3, #0
-endmcro
+mcroend
 
 ; =================================================
 ; Main Program
 ; =================================================
 
 ; Initialize program
-START: init
+START: init           ; This will expand to three mov instructions
        mov r1, #10     ; Load initial value
        jsr PRINTVAL    ; Print the initial value
 
@@ -39,7 +39,7 @@ CONTINUE: add r2, r1    ; Add current value to sum
 
 ; Print results and exit
 DONE:  mov r1, r2      ; Move sum to r1 for printing
-       jsr PRINTVAL    ; Print the sum
+       print           ; Use the print macro
        mov r3, RESULT  ; Store result in memory
        stop
 

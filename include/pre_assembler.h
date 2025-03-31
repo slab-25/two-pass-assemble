@@ -16,6 +16,7 @@ typedef struct macro {
     char name[MAX_LABEL_LENGTH];  /* Macro name */
     char **lines;                 /* Array of lines in the macro */
     int line_count;               /* Number of lines in the macro */
+    int usage_count;              /* Number of times the macro is used */
     struct macro *next;           /* Pointer to the next macro in the list */
 } macro_t;
 
@@ -69,6 +70,11 @@ void free_macro_table(macro_table_t *table);
  * @param filename The name of the source file
  * @param context Error context for reporting issues
  * @return true if processing was successful, false otherwise
+ *
+ * This function reads an assembly source file, expands all macros using the
+ * specified syntax (mcro/mcroend), and writes the expanded code to a new file.
+ * Macros are defined with the 'mcro' directive and terminated with 'mcroend'.
+ * Macro invocation is done by simply using the macro name as a token.
  */
 bool process_file(const char *filename, error_context_t *context);
 
