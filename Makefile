@@ -35,7 +35,7 @@ clean:
 # Test compilation rule
 test: all
 	@echo "Running tests..."
-	# Test commands can be added here
+	tests/run_tests.sh
 
 # Phony targets
 .PHONY: all clean directories test
